@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ColorSynth Audio">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>ColorSynth — Audio Reactive</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; background:#000; overflow:hidden; font-family:'Courier New',monospace; }
+@supports (-webkit-touch-callout:none) { html,body,#canvas { height:-webkit-fill-available; } }
+#canvas { display:block; width:100vw; height:100vh; touch-action:none; }
+
+/* Corner labels */
+#corner-tl, #corner-tr { position:fixed; color:rgba(255,255,255,0.4); font-size:10px; letter-spacing:1.5px; pointer-events:none; }
+#corner-tl { top:16px; left:16px; }
+#corner-tr { top:16px; right:16px; }
+#corner-tl a { color:inherit; text-decoration:none; }
+
+/* Toast */
+#toast {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0.85);
+  background:rgba(255,255,255,0.12); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  color:#fff; padding:12px 26px; border-radius:26px;
+  font-size:14px; letter-spacing:1px; pointer-events:none;
+  opacity:0; transition:opacity 0.25s, transform 0.25s;
+  border:1px solid rgba(255,255,255,0.2); text-align:center;
+}
+#toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+/* Tap-to-start overlay */
+#start-overlay {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:20px;
+  background:rgba(0,0,0,0.75); z-index:50;
+  transition:opacity 0.5s;
+}
+#start-overlay.gone { opacity:0; pointer-events:none; }
+#start-btn {
+  width:96px; height:96px; border-radius:50%;
+  border:2px solid rgba(255,255,255,0.5);
+  background:rgba(255,255,255,0.08);
+  color:#fff; font-size:36px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:transform 0.15s, background 0.15s;
+}
+#start-btn:active { transform:scale(0.9); background:rgba(255,255,255,0.18); }
+#start-label { color:rgba(255,255,255,0.65); font-size:12px; letter-spacing:3px; }
+#start-sub   { color:rgba(255,255,255,0.35); font-size:10px; letter-spacing:2px; text-align:center; max-width:260px; line-height:1.7; }
+
+/* Bottom HUD */
+#hud {
+  position:fixed; bottom:0; left:0; right:0;
+  background:linear-gradient(transparent,rgba(0,0,0,0.88));
+  padding:8px 16px 18px; transition:opacity 0.4s;
+}
+#hud.hidden { opacity:0; pointer-events:none; }
+
+.hud-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+.hud-label { color:rgba(255,255,255,0.4); font-size:9px; letter-spacing:2px; min-width:52px; }
+.chip {
+  padding:6px 14px; border-radius:18px;
+  border:1px solid rgba(255,255,255,0.2);
+  background:rgba(255,255,255,0.07); color:#fff;
+  font-size:12px; cursor:pointer; letter-spacing:0.5px;
+  transition:all 0.15s; -webkit-user-select:none;
+  font-family:'Courier New',monospace;
+}
+.chip.active { background:rgba(255,255,255,0.88); color:#000; border-color:transparent; }
+.chip:active { transform:scale(0.92); }
+
+/* Level meters */
+#meters {
+  position:fixed; bottom:80px; left:16px; right:16px;
+  display:flex; gap:3px; align-items:flex-end; height:32px;
+  pointer-events:none; opacity:0; transition:opacity 0.5s;
+}
+#meters.show { opacity:1; }
+.bar {
+  flex:1; background:rgba(255,255,255,0.15); border-radius:2px 2px 0 0;
+  transform:scaleY(0); transform-origin:bottom;
+  transition:transform 0.05s linear;
+}
+
+/* Sensitivity control */
+#sens-row { display:flex; align-items:center; gap:10px; margin-top:4px; }
+#sens-slider {
+  -webkit-appearance:none; appearance:none; flex:1;
+  height:3px; border-radius:2px; background:rgba(255,255,255,0.2);
+  outline:none; cursor:pointer;
+}
+#sens-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:18px; height:18px;
+  border-radius:50%; background:#fff; cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div id="corner-tl"><a href="../">← HUB</a> · AUDIO REACTIVE</div>
+<div id="corner-tr"></div>
+<div id="toast"></div>
+
+<!-- Level meters -->
+<div id="meters"></div>
+
+<!-- Tap to start -->
+<div id="start-overlay">
+  <button id="start-btn">🎤</button>
+  <div id="start-label">TAP TO START</div>
+  <div id="start-sub">Microphone access required.<br>ColorSynth reacts to sound in real time.</div>
+</div>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div class="hud-row">
+    <span class="hud-label">REACT TO</span>
+    <button class="chip active" data-band="bass">BASS</button>
+    <button class="chip" data-band="mid">MIDS</button>
+    <button class="chip" data-band="high">HIGHS</button>
+    <button class="chip" data-band="all">FULL</button>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">VARIATION</span>
+    <button class="chip active" data-var="0">Penrose</button>
+    <button class="chip" data-var="1">Aurora</button>
+    <button class="chip" data-var="2">Bloom</button>
+    <button class="chip" data-var="3">Tidal</button>
+    <button class="chip" data-var="4">Vortex</button>
+  </div>
+  <div class="hud-row">
+    <span class="hud-label">SENS</span>
+    <input type="range" id="sens-slider" min="0.5" max="5.0" step="0.1" value="2.0">
+    <span class="hud-label" id="sens-val">2.0</span>
+  </div>
+</div>
+
+<script>
+// ── WebGL setup ───────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl', {antialias:false, powerPreference:'high-performance'});
+if (!gl) { document.body.innerHTML='<p style="color:white;padding:40px">WebGL not supported</p>'; }
+
+const VS = `attribute vec2 a_pos; void main(){gl_Position=vec4(a_pos,0.,1.);}`;
+
+// ── Fragment shader — ColorSynth variations all audio-driven ──────────────────
+const FS = `
+precision highp float;
+uniform float u_time;
+uniform vec2  u_res;
+uniform float u_bass;    // 0-1 bass energy
+uniform float u_mid;     // 0-1 mid energy
+uniform float u_high;    // 0-1 high energy
+uniform float u_beat;    // 0-1 beat pulse (decaying)
+uniform int   u_var;     // variation index
+uniform float u_zoom;
+
+// Complex helpers
+vec2 cmul(vec2 a,vec2 b){return vec2(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
+vec2 cexp(vec2 z){return exp(z.x)*vec2(cos(z.y),sin(z.y));}
+vec2 csin(vec2 z){float ey=exp(z.y),emy=exp(-z.y);return vec2(sin(z.x)*(ey+emy)*.5,cos(z.x)*(ey-emy)*.5);}
+vec2 ccos(vec2 z){float ey=exp(z.y),emy=exp(-z.y);return vec2(cos(z.x)*(ey+emy)*.5,-sin(z.x)*(ey-emy)*.5);}
+
+// ── Variations ────────────────────────────────────────────────────────────────
+// 0: Penrose — bass drives zoom, beat flashes
+vec2 var_penrose(vec2 uv, float t) {
+  float scale = 1.0 + u_bass * 1.8 + u_beat * 0.6;
+  uv *= scale;
+  vec2 z = vec2(0.);
+  for (int k=0; k<5; k++) {
+    float ang = 6.28318*float(k)/5.;
+    vec2 d = vec2(cos(ang),sin(ang));
+    float ph = t*(0.5+u_mid*0.8) + float(k)*1.2566;
+    z += cexp(vec2(0., dot(uv,d)*4.+ph));
+  }
+  return z;
+}
+
+// 1: Aurora — highs flutter the bands
+vec2 var_aurora(vec2 uv, float t) {
+  float x=uv.x, y=uv.y;
+  float spd = 0.3 + u_high*1.5;
+  float amp  = 1.0 + u_bass*2.0;
+  float b1=sin(x*1.8*u_zoom + sin(y*0.9+t*spd)*amp + t*0.4);
+  float b2=sin(x*2.3*u_zoom + sin(y*1.1-t*spd)*amp*0.8 + t*0.35);
+  float b3=sin(x*1.1*u_zoom + sin(y*0.7+t*spd*0.75)*amp*0.6 - t*0.3);
+  float s=(b1+b2*.7+b3*.5)/2.2;
+  float ph=y*0.6 + t*0.2 + u_beat*1.2;
+  return cexp(vec2(0.,ph))*s;
+}
+
+// 2: Fourier Bloom — bass drives harmonic amplitude
+vec2 var_bloom(vec2 uv, float t) {
+  float r=length(uv)+.01, th=atan(uv.y,uv.x), bl=0.;
+  float bassBoost = 1.0 + u_bass*3.0;
+  for (int k=1; k<6; k++) {
+    float fk=float(k);
+    float amp=exp(-fk*0.4)*bassBoost;
+    float ph=fk*th + fk*t*(0.18+u_high*0.3) + fk*0.63;
+    bl+=amp*sin(r*fk*2.+ph);
+  }
+  bl/=2.5;
+  return cexp(vec2(0.,th*.5+t*0.12+u_beat*0.8))*bl;
+}
+
+// 3: Tidal — mid energy drives wave amplitude
+vec2 var_tidal(vec2 uv, float t) {
+  float warp = u_mid*0.8 + u_beat*0.4;
+  vec2 z2=cmul(uv,uv)+vec2(t*.4+u_bass*0.5, warp);
+  vec2 zs=csin(uv+vec2(sin(t*0.3+warp)*.5, cos(t*0.25)*.5));
+  return cmul(csin(z2),zs)+cmul(uv,ccos(zs+vec2(t*.2,0.)));
+}
+
+// 4: Vortex — all bands spin, beat kicks rotation
+vec2 var_vortex(vec2 uv, float t) {
+  float spinRate = 0.3 + u_mid*0.5 + u_beat*0.4;
+  float ct=cos(t*spinRate), st=sin(t*spinRate);
+  vec2 r=vec2(uv.x*ct-uv.y*st, uv.x*st+uv.y*ct);
+  r *= (1.0 + u_bass*0.8);
+  vec2 zs=csin(r);
+  vec2 z=(r+zs)*.5;
+  float d=length(r-zs)+t*0.1+u_high*0.5;
+  return cmul(cmul(z,z),cexp(vec2(0.,d)));
+}
+
+// ── Colormap — energy-tinted psychedelic ─────────────────────────────────────
+vec3 colormap(vec2 z, float beat) {
+  z = z/(1.+length(z)*.3);
+  float r=0.5+0.5*sin(z.x*3.);
+  float g=0.5+0.5*sin(z.y*3.+2.094);
+  float b=0.5+0.5*sin(length(z)*3.+4.189);
+  vec3 col = vec3(r,g,b);
+  // Beat flash — pulse white
+  col = mix(col, vec3(1.), beat*0.35);
+  // Bass tint — warm
+  col = mix(col, col*vec3(1.4,0.9,0.7), u_bass*0.4);
+  // High tint — cool
+  col = mix(col, col*vec3(0.8,0.9,1.4), u_high*0.3);
+  return clamp(col, 0., 1.);
+}
+
+void main() {
+  float asp = u_res.x/u_res.y;
+  vec2 uv = (gl_FragCoord.xy/u_res - 0.5)*12.566/u_zoom;
+  uv.x *= asp;
+
+  vec2 z;
+  if      (u_var==0) z=var_penrose(uv, u_time);
+  else if (u_var==1) z=var_aurora(uv, u_time);
+  else if (u_var==2) z=var_bloom(uv, u_time);
+  else if (u_var==3) z=var_tidal(uv, u_time);
+  else               z=var_vortex(uv, u_time);
+
+  gl_FragColor = vec4(colormap(z, u_beat), 1.);
+}
+`;
+
+// ── Compile ───────────────────────────────────────────────────────────────────
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const posAttr = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(posAttr);
+gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+
+const uTime = gl.getUniformLocation(prog,'u_time');
+const uRes  = gl.getUniformLocation(prog,'u_res');
+const uBass = gl.getUniformLocation(prog,'u_bass');
+const uMid  = gl.getUniformLocation(prog,'u_mid');
+const uHigh = gl.getUniformLocation(prog,'u_high');
+const uBeat = gl.getUniformLocation(prog,'u_beat');
+const uVar  = gl.getUniformLocation(prog,'u_var');
+const uZoom = gl.getUniformLocation(prog,'u_zoom');
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let bass=0, mid=0, high=0, beat=0;
+let beatDecay = 0;
+let varIdx = 0;
+let bandMode = 'bass';  // which band drives the "main" response
+let sensitivity = 2.0;
+let zoom = 1.0;
+let audioCtx = null, analyser = null, dataArr = null;
+let hudVisible = false, hudTimer = null;
+let frameCount = 0, lastFps = performance.now();
+
+const fpsEl    = document.getElementById('corner-tr');
+const toastEl  = document.getElementById('toast');
+const metersEl = document.getElementById('meters');
+const hudEl    = document.getElementById('hud');
+const sensSlider = document.getElementById('sens-slider');
+const sensVal    = document.getElementById('sens-val');
+
+// Build meters
+const NUM_BARS = 32;
+for (let i=0; i<NUM_BARS; i++) {
+  const b = document.createElement('div');
+  b.className='bar'; metersEl.appendChild(b);
+}
+const bars = metersEl.querySelectorAll('.bar');
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  toastEl.textContent=msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toastEl.classList.remove('show'),1500);
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+function showHud() {
+  hudEl.classList.remove('hidden');
+  metersEl.classList.add('show');
+  clearTimeout(hudTimer);
+  hudTimer = setTimeout(()=>hudEl.classList.add('hidden'), 5000);
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio||1,2);
+  canvas.width  = window.innerWidth*dpr;
+  canvas.height = window.innerHeight*dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize', resize); resize();
+
+// ── Audio setup ───────────────────────────────────────────────────────────────
+async function startAudio() {
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    src.connect(analyser);
+    dataArr = new Uint8Array(analyser.frequencyBinCount);  // 128 bins
+
+    document.getElementById('start-overlay').classList.add('gone');
+    setTimeout(()=>document.getElementById('start-overlay').style.display='none', 600);
+    showHud();
+    toast('🎤 Listening');
+  } catch(e) {
+    toast('Mic access denied — tap again to retry');
+    console.error(e);
+  }
+}
+
+document.getElementById('start-btn').addEventListener('click', startAudio);
+
+// ── Audio analysis ────────────────────────────────────────────────────────────
+// Beat detection — simple energy threshold with cooldown
+let lastBeatTime = 0;
+const BEAT_COOLDOWN = 300;  // ms
+let energyHistory = new Array(20).fill(0);
+let histIdx = 0;
+
+function analyzeAudio(now) {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(dataArr);
+  const bins = dataArr.length;
+
+  // Frequency bands (128 bins, 0-nyquist ~22050Hz at 44100Hz sample rate)
+  // bass: 0-10 bins (~0-1.7kHz), mid: 10-50 (~1.7-8.6kHz), high: 50-128
+  let bSum=0, mSum=0, hSum=0;
+  for(let i=0;i<10;i++)  bSum+=dataArr[i];
+  for(let i=10;i<50;i++) mSum+=dataArr[i];
+  for(let i=50;i<bins;i++) hSum+=dataArr[i];
+
+  const sens = sensitivity;
+  bass = Math.min(1, (bSum/10/255)*sens);
+  mid  = Math.min(1, (mSum/40/255)*sens*0.7);
+  high = Math.min(1, (hSum/78/255)*sens*0.5);
+
+  // Smooth
+  bass = bass*0.4 + (window._prevBass||0)*0.6;
+  mid  = mid*0.4  + (window._prevMid||0)*0.6;
+  high = high*0.4 + (window._prevHigh||0)*0.6;
+  window._prevBass=bass; window._prevMid=mid; window._prevHigh=high;
+
+  // Beat detection — compare instantaneous bass energy to recent average
+  const instantBass = bSum/10/255;
+  energyHistory[histIdx%20] = instantBass; histIdx++;
+  const avgEnergy = energyHistory.reduce((a,b)=>a+b)/20;
+  if (instantBass > avgEnergy*1.6 + 0.15 && now-lastBeatTime > BEAT_COOLDOWN) {
+    beatDecay = 1.0;
+    lastBeatTime = now;
+  }
+  beatDecay *= 0.88;  // decay
+  beat = beatDecay;
+
+  // Update bar meters (32 bars from 128 bins, grouped)
+  const step = Math.floor(bins/NUM_BARS);
+  bars.forEach((bar,i)=>{
+    let v=0; for(let j=0;j<step;j++) v+=dataArr[i*step+j];
+    v=v/step/255;
+    bar.style.transform=`scaleY(${Math.min(1,v*sens*0.8)})`;
+    const hue = i*2.8;
+    bar.style.background=`hsl(${hue},80%,${40+v*40}%)`;
+  });
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function render(now) {
+  requestAnimationFrame(render);
+  analyzeAudio(now);
+
+  gl.uniform1f(uTime, now/1000);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uBass, bass);
+  gl.uniform1f(uMid, mid);
+  gl.uniform1f(uHigh, high);
+  gl.uniform1f(uBeat, beat);
+  gl.uniform1i(uVar, varIdx);
+  gl.uniform1f(uZoom, zoom);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frameCount++;
+  if(now-lastFps>1000){fpsEl.textContent=frameCount+' fps';frameCount=0;lastFps=now;}
+}
+requestAnimationFrame(render);
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip[data-band]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    bandMode=btn.dataset.band;
+    document.querySelectorAll('.chip[data-band]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    showHud();
+  });
+});
+
+const VAR_NAMES=['Penrose','Aurora','Bloom','Tidal','Vortex'];
+document.querySelectorAll('.chip[data-var]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    varIdx=parseInt(btn.dataset.var);
+    document.querySelectorAll('.chip[data-var]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    toast(VAR_NAMES[varIdx]);
+    showHud();
+  });
+});
+
+sensSlider.addEventListener('input',()=>{
+  sensitivity=parseFloat(sensSlider.value);
+  sensVal.textContent=sensitivity.toFixed(1);
+  showHud();
+});
+
+// Tap canvas → show HUD
+canvas.addEventListener('click',()=>showHud());
+
+// Pinch zoom
+let initDist=null, initZoom=1;
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===2){
+    initDist=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
+    initZoom=zoom;
+  }
+},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches.length===2&&initDist){
+    const d=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
+    zoom=Math.max(0.3,Math.min(4,initZoom*d/initDist));
+  }
+},{passive:true});
+canvas.addEventListener('touchend',e=>{if(e.touches.length<2)initDist=null;},{passive:true});
+
+// Scroll zoom desktop
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  zoom=Math.max(0.3,Math.min(4,zoom*(e.deltaY<0?1.12:0.89)));
+},{passive:false});
+
+// Keyboard shortcuts
+window.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight') { varIdx=(varIdx+1)%5; document.querySelectorAll('.chip[data-var]').forEach((b,i)=>b.classList.toggle('active',i===varIdx)); toast(VAR_NAMES[varIdx]); }
+  if(e.key==='+'||e.key==='=') zoom=Math.min(4,zoom*1.15);
+  if(e.key==='-') zoom=Math.max(0.3,zoom/1.15);
+});
+</script>
+</body>
+</html>

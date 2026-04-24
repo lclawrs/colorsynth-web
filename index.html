@@ -139,14 +139,15 @@ footer a { color: rgba(100,160,255,0.5); text-decoration: none; }
       <div class="card-arrow">→</div>
     </a>
 
-    <div class="card soon">
-      <div style="aspect-ratio:16/9; background:rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.15); font-size:32px;">∿</div>
+    <a class="card" href="experiments/audio.html">
+      <canvas class="card-preview" id="prev-audio"></canvas>
       <div class="card-body">
-        <div class="card-tag">COMING SOON</div>
+        <div class="card-tag">AUDIO · FFT · BEAT DETECT</div>
         <h2>Audio Reactive</h2>
-        <p>ColorSynth driven by microphone FFT. Variations pulse and morph in real time to music or ambient sound.</p>
+        <p>Microphone FFT drives ColorSynth in real time. Bass, mids, and highs each shape the math differently. Beat detection flashes the field on kick drums.</p>
       </div>
-    </div>
+      <div class="card-arrow">→</div>
+    </a>
 
     <div class="card soon">
       <div style="aspect-ratio:16/9; background:rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.15); font-size:32px;">∞</div>
@@ -300,9 +301,45 @@ function setupPreview(g, FS) {
   requestAnimationFrame(loop);
 }
 
+// Preview for audio card — Bloom variation with animated "fake audio" pulses
+function initPreviewAudio(canvas) {
+  if (!canvas) return;
+  const g = canvas.getContext('webgl',{antialias:false});
+  if (!g) return;
+  const FS = `precision mediump float;
+uniform float t; uniform vec2 res;
+void main(){
+  vec2 uv=(gl_FragCoord.xy/res-.5)*12.;
+  uv.x*=res.x/res.y;
+  // Simulated bass pulse
+  float bass=0.5+0.5*sin(t*2.1)*sin(t*0.7);
+  float beat=max(0.,sin(t*3.14)*0.8);
+  float r=length(uv)+.01;
+  float th=atan(uv.y,uv.x);
+  float bl=0.;
+  for(int k=1;k<6;k++){
+    float fk=float(k);
+    float amp=exp(-fk*0.4)*(1.+bass*2.);
+    float ph=fk*th+fk*t*(0.18+0.3*bass)+fk*0.63;
+    bl+=amp*sin(r*fk*2.+ph);
+  }
+  bl/=2.5;
+  vec2 z=vec2(cos(th*.5+t*.12)*bl, sin(th*.5+t*.12)*bl);
+  z=z/(1.+length(z)*.3);
+  float r2=.5+.5*sin(z.x*3.);
+  float g2=.5+.5*sin(z.y*3.+2.094);
+  float b=.5+.5*sin(length(z)*3.+4.189);
+  vec3 col=mix(vec3(r2,g2,b), vec3(1.), beat*.3);
+  col=mix(col, col*vec3(1.4,.9,.7), bass*.4);
+  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+}`;
+  setupPreview(g, FS);
+}
+
 window.addEventListener('load', ()=>{
   initPreview2D(document.getElementById('prev-2d'));
   initPreview3D(document.getElementById('prev-3d'));
+  initPreviewAudio(document.getElementById('prev-audio'));
 });
 </script>
 </body>
