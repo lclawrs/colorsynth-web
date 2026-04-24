@@ -141,19 +141,21 @@ const VARIATIONS = {
     }`,
 
   "Caustics": `
-    // Ocean caustic light — 3 ripple sources interfering
+    // Ocean caustic light — 3 orbiting ripple sources interfering
     vec2 variation(vec2 uv, float t) {
-      vec2 src1 = cexp(vec2(0.0, t)) * 0.5;
-      vec2 src2 = cexp(vec2(0.0, t*1.13+1.0)) * 0.4;
-      vec2 src3 = cexp(vec2(0.0, t*0.87+2.1)) * 0.3;
-      float r1 = cabs(uv - src1) + 0.01;
-      float r2 = cabs(uv + src2) + 0.01;
-      vec2 zSIN = csin(uv);
-      float r3 = cabs(zSIN*0.6 - src3) + 0.01;
-      float c = sin(3.0/r1+t) * sin(3.0/r2-t*0.9) * sin(2.5/r3+t*1.1);
-      c = tanh(c * 1.5);
-      float phase = cangle(uv) + t*0.3;
-      return cexp(vec2(0.0, phase)) * c;
+      // Three ripple sources orbiting the centre
+      vec2 src1 = vec2(cos(t)*0.8,       sin(t)*0.8);
+      vec2 src2 = vec2(cos(t*1.13+2.0)*0.6, sin(t*1.13+2.0)*0.6);
+      vec2 src3 = vec2(cos(t*0.87+4.0)*0.5, sin(t*0.87+4.0)*0.5);
+      float r1 = length(uv - src1) + 0.3;
+      float r2 = length(uv - src2) + 0.3;
+      float r3 = length(uv - src3) + 0.3;
+      // Ripple interference (safe distances so no /0)
+      float c = sin(4.0*r1 - t*2.0) * sin(4.0*r2 - t*1.8) * sin(3.5*r3 - t*2.2);
+      // Soft saturate without tanh: x/(1+|x|)
+      c = c / (1.0 + abs(c));
+      float phase = atan(uv.y, uv.x) + t*0.25;
+      return vec2(cos(phase)*c, sin(phase)*c);
     }`,
 
   "Aurora": `
@@ -220,19 +222,22 @@ const VARIATIONS = {
     }`,
 
   "Tidal": `
-    // Tidal — sin(z²)·sin(z) + z·cos(sin(z))
+    // Tidal — sin(z²+t)·sin(z) + z·cos(sin(z)+t) — time-driven wave
     vec2 variation(vec2 uv, float t) {
-      vec2 zSIN = csin(uv);
-      vec2 z2 = cmul(uv, uv);
-      return cmul(csin(z2), zSIN) + cmul(uv, ccos(zSIN));
+      vec2 z2 = cmul(uv, uv) + vec2(t*0.4, 0.0);
+      vec2 zSIN = csin(uv + vec2(sin(t*0.3)*0.5, cos(t*0.25)*0.5));
+      return cmul(csin(z2), zSIN) + cmul(uv, ccos(zSIN + vec2(t*0.2, 0.0)));
     }`,
 
   "Vortex": `
-    // Vortex — recursive rotation through sin/cos space
+    // Vortex — rotating complex field, driven by t
     vec2 variation(vec2 uv, float t) {
-      vec2 zSIN = csin(uv);
-      vec2 z = (uv + zSIN) * 0.5;
-      float dist = length(uv - zSIN);
+      // Rotate input slowly
+      float ct = cos(t*0.3); float st = sin(t*0.3);
+      vec2 ruv = vec2(uv.x*ct - uv.y*st, uv.x*st + uv.y*ct);
+      vec2 zSIN = csin(ruv);
+      vec2 z = (ruv + zSIN) * 0.5;
+      float dist = length(ruv - zSIN) + t*0.1;
       return cmul(cmul(z,z), cexp(vec2(0.0, dist)));
     }`,
 
@@ -304,13 +309,16 @@ const COLORMAPS = {
     }`,
   "Ocean": `
     vec3 colormap(vec2 z) {
-      float v = 0.5 + 0.5*tanh(length(z)*0.8 - 0.5);
-      float phase = cangle(z);
-      return 0.5 + 0.5 * vec3(
-        sin(phase + v*3.0),
-        sin(phase + v*3.0 + 2.094),
-        sin(phase + v*3.0 + 4.189)
-      ) * vec3(0.3, 0.7, 1.0);
+      float len = length(z);
+      // safe saturate: x/(1+|x|) approximates tanh
+      float v = 0.5 + 0.5 * (len*0.8 - 0.5) / (1.0 + abs(len*0.8 - 0.5));
+      float phase = atan(z.y, z.x);
+      vec3 col = 0.5 + 0.5 * vec3(
+        sin(phase + v*4.0),
+        sin(phase + v*4.0 + 2.094),
+        sin(phase + v*4.0 + 4.189)
+      );
+      return col * vec3(0.3, 0.75, 1.0);
     }`,
   "Neon": `
     vec3 colormap(vec2 z) {
