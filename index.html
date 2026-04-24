@@ -3,12 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- iOS standalone / fullscreen -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ColorSynth">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- Theme color hides browser chrome on Android too -->
+<meta name="theme-color" content="#000000">
 <title>ColorSynth</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:100%; height:100%; background:#000; overflow:hidden; font-family:'Courier New',monospace; }
+  /* iOS standalone: fill behind status bar */
+  @supports (-webkit-touch-callout: none) {
+    html, body { height: -webkit-fill-available; }
+  }
 
   #canvas { display:block; width:100vw; height:100vh; touch-action:none; }
+  @supports (-webkit-touch-callout: none) {
+    #canvas { height: -webkit-fill-available; }
+  }
 
   /* HUD overlay */
   #hud {
