@@ -3,586 +3,601 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<!-- iOS standalone / fullscreen -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ColorSynth">
 <meta name="mobile-web-app-capable" content="yes">
-<!-- Theme color hides browser chrome on Android too -->
 <meta name="theme-color" content="#000000">
 <title>ColorSynth</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  html, body { width:100%; height:100%; background:#000; overflow:hidden; font-family:'Courier New',monospace; }
-  /* iOS standalone: fill behind status bar */
-  @supports (-webkit-touch-callout: none) {
-    html, body { height: -webkit-fill-available; }
-  }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; background:#000; overflow:hidden; font-family:'Courier New',monospace; }
+@supports (-webkit-touch-callout:none) { html,body { height:-webkit-fill-available; } }
 
-  #canvas { display:block; width:100vw; height:100vh; touch-action:none; }
-  @supports (-webkit-touch-callout: none) {
-    #canvas { height: -webkit-fill-available; }
-  }
+#canvas { display:block; width:100vw; height:100vh; touch-action:none; cursor:crosshair; }
+@supports (-webkit-touch-callout:none) { #canvas { height:-webkit-fill-available; } }
 
-  /* HUD overlay */
-  #hud {
-    position:fixed; bottom:0; left:0; right:0;
-    background: linear-gradient(transparent, rgba(0,0,0,0.85));
-    padding: 12px 16px 20px;
-    transition: opacity 0.4s;
-  }
-  #hud.hidden { opacity:0; pointer-events:none; }
+/* ── Toast notification ── */
+#toast {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0.8);
+  background:rgba(255,255,255,0.15); backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  color:#fff; padding:10px 22px; border-radius:24px;
+  font-size:14px; letter-spacing:1px; pointer-events:none;
+  opacity:0; transition:opacity 0.2s, transform 0.2s;
+  white-space:nowrap; border:1px solid rgba(255,255,255,0.2);
+}
+#toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
 
-  .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
+/* ── Corner indicators ── */
+#corner-tl, #corner-tr, #corner-bl, #corner-br {
+  position:fixed; color:rgba(255,255,255,0.45); font-size:10px;
+  letter-spacing:1.5px; pointer-events:none;
+  transition:opacity 0.4s;
+}
+#corner-tl { top:16px; left:16px; }
+#corner-tr { top:16px; right:16px; }
+#corner-bl { bottom:88px; left:16px; }
+#corner-br { bottom:88px; right:16px; }
 
-  .chip {
-    padding:6px 14px; border-radius:20px; border:1px solid rgba(255,255,255,0.25);
-    background:rgba(255,255,255,0.08); color:#fff; font-size:13px; cursor:pointer;
-    transition:all 0.2s; white-space:nowrap; user-select:none; -webkit-user-select:none;
-  }
-  .chip.active { background:rgba(255,255,255,0.9); color:#000; border-color:transparent; }
-  .chip:active { transform:scale(0.94); }
+/* ── Status bar ── */
+#statusbar {
+  position:fixed; bottom:0; left:0; right:0; height:72px;
+  background:linear-gradient(transparent, rgba(0,0,0,0.9));
+  display:flex; align-items:flex-end; justify-content:space-between;
+  padding:0 20px 16px; transition:opacity 0.4s;
+}
+#statusbar.hidden { opacity:0; pointer-events:none; }
 
-  #title {
-    position:fixed; top:16px; left:50%; transform:translateX(-50%);
-    color:rgba(255,255,255,0.6); font-size:11px; letter-spacing:3px;
-    text-transform:uppercase; pointer-events:none;
-    transition:opacity 0.4s;
-  }
-  #title.hidden { opacity:0; }
+.sb-section { display:flex; flex-direction:column; align-items:center; gap:4px; min-width:80px; }
+.sb-label { color:rgba(255,255,255,0.4); font-size:9px; letter-spacing:2px; }
+.sb-val   { color:#fff; font-size:13px; font-weight:bold; letter-spacing:0.5px; }
 
-  #fps {
-    position:fixed; top:16px; right:16px;
-    color:rgba(255,255,255,0.35); font-size:10px;
-    pointer-events:none;
-  }
+#btn-info, #btn-freeze {
+  width:38px; height:38px; border-radius:50%;
+  border:1px solid rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.08);
+  color:#fff; font-size:16px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background 0.2s, transform 0.1s;
+  flex-shrink:0;
+}
+#btn-info:active, #btn-freeze:active { transform:scale(0.88); }
+#btn-freeze.frozen { background:rgba(255,120,0,0.35); border-color:rgba(255,140,0,0.6); }
 
-  .label { color:rgba(255,255,255,0.5); font-size:11px; letter-spacing:1px; margin-right:4px; white-space:nowrap; }
+/* ── Speed ring (circular indicator) ── */
+#speed-ring {
+  position:fixed; bottom:88px; left:50%; transform:translateX(-50%);
+  width:64px; height:64px; pointer-events:none; opacity:0;
+  transition:opacity 0.3s;
+}
+#speed-ring.show { opacity:1; }
 
-  input[type=range] {
-    -webkit-appearance:none; appearance:none;
-    height:3px; border-radius:2px;
-    background:rgba(255,255,255,0.2); outline:none; cursor:pointer;
-    flex:1; min-width:80px;
-  }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance:none; width:18px; height:18px;
-    border-radius:50%; background:#fff; cursor:pointer;
-  }
+/* ── Info panel ── */
+#info-panel {
+  position:fixed; bottom:0; left:0; right:0;
+  height:82vh; background:rgba(10,10,15,0.97);
+  backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+  border-radius:20px 20px 0 0; transform:translateY(100%);
+  transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
+  overflow:hidden; display:flex; flex-direction:column;
+  border-top:1px solid rgba(255,255,255,0.1);
+  z-index:100;
+}
+#info-panel.open { transform:translateY(0); }
+
+#info-header {
+  padding:20px 24px 12px;
+  display:flex; justify-content:space-between; align-items:center;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+  flex-shrink:0;
+}
+#info-header h2 { color:#fff; font-size:16px; letter-spacing:2px; }
+#btn-close { background:none; border:none; color:rgba(255,255,255,0.5); font-size:22px; cursor:pointer; padding:4px; }
+
+#info-cards {
+  overflow-y:auto; padding:16px 20px 40px;
+  -webkit-overflow-scrolling:touch;
+  flex:1;
+}
+
+.card {
+  background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px; padding:18px; margin-bottom:14px;
+}
+.card-icon { font-size:24px; margin-bottom:8px; }
+.card h3 { color:#fff; font-size:13px; letter-spacing:1.5px; margin-bottom:8px; }
+.card p  { color:rgba(255,255,255,0.65); font-size:12px; line-height:1.7; }
+.card .tag {
+  display:inline-block; background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.15); border-radius:12px;
+  padding:3px 10px; font-size:10px; color:rgba(255,255,255,0.6);
+  margin:6px 4px 0 0; letter-spacing:1px;
+}
+
+/* ── Gesture hint overlay ── */
+#gesture-hint {
+  position:fixed; inset:0; pointer-events:none;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  gap:12px; opacity:0; transition:opacity 0.5s;
+  z-index:50;
+}
+#gesture-hint.show { opacity:1; }
+.hint-row { display:flex; gap:24px; }
+.hint-item { text-align:center; color:rgba(255,255,255,0.7); }
+.hint-item .icon { font-size:28px; display:block; margin-bottom:4px; }
+.hint-item .desc { font-size:10px; letter-spacing:1px; }
+
+/* Swipe arrows */
+.swipe-arrow {
+  position:fixed; pointer-events:none; color:rgba(255,255,255,0.5);
+  font-size:22px; opacity:0; transition:opacity 0.15s;
+}
+#arrow-l { left:16px; top:50%; transform:translateY(-50%); }
+#arrow-r { right:16px; top:50%; transform:translateY(-50%); }
+#arrow-u { top:60px; left:50%; transform:translateX(-50%); }
+#arrow-d { bottom:90px; left:50%; transform:translateX(-50%); }
+.swipe-arrow.show { opacity:1; }
+
+/* error */
+#err {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  background:rgba(200,0,0,0.75); color:#fff; padding:16px; border-radius:10px;
+  font-size:12px; max-width:80vw; text-align:center; white-space:pre-wrap; z-index:999;
+}
 </style>
 </head>
 <body>
-<canvas id="canvas"></canvas>
-<div id="title">COLORSYNTH</div>
-<div id="fps"></div>
 
-<div id="hud">
-  <div class="row">
-    <span class="label">VARIATION</span>
-    <div id="var-buttons"></div>
+<canvas id="canvas"></canvas>
+
+<!-- Gesture arrows -->
+<div class="swipe-arrow" id="arrow-l">◀</div>
+<div class="swipe-arrow" id="arrow-r">▶</div>
+<div class="swipe-arrow" id="arrow-u">▲</div>
+<div class="swipe-arrow" id="arrow-d">▼</div>
+
+<!-- Corner labels -->
+<div id="corner-tl">COLORSYNTH</div>
+<div id="corner-tr" id="fps-el"></div>
+<div id="corner-bl"></div>
+<div id="corner-br"></div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Speed ring SVG -->
+<svg id="speed-ring" viewBox="0 0 64 64">
+  <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="3"/>
+  <circle id="speed-arc" cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.8)"
+    stroke-width="3" stroke-linecap="round"
+    stroke-dasharray="176" stroke-dashoffset="176"
+    transform="rotate(-90 32 32)"/>
+  <text x="32" y="37" text-anchor="middle" fill="#fff" font-size="11" font-family="Courier New">1.0×</text>
+</svg>
+
+<!-- Status bar -->
+<div id="statusbar">
+  <div class="sb-section">
+    <div class="sb-label">VARIATION</div>
+    <div class="sb-val" id="sb-var">Penrose</div>
   </div>
-  <div class="row">
-    <span class="label">PALETTE</span>
-    <div id="cmap-buttons"></div>
+  <div style="display:flex;gap:12px;align-items:center;padding-bottom:2px">
+    <button id="btn-freeze" title="Freeze time">⏸</button>
+    <button id="btn-info" title="About">ⓘ</button>
   </div>
-  <div class="row">
-    <span class="label">SPEED</span>
-    <input type="range" id="speed" min="0.05" max="3.0" step="0.05" value="0.6">
-    <span class="label" style="margin-left:6px">ZOOM</span>
-    <input type="range" id="zoom" min="0.3" max="4.0" step="0.05" value="1.0">
+  <div class="sb-section">
+    <div class="sb-label">PALETTE</div>
+    <div class="sb-val" id="sb-cmap">Psychedelic</div>
+  </div>
+</div>
+
+<!-- Info panel -->
+<div id="info-panel">
+  <div id="info-header">
+    <h2>✦ HOW IT WORKS</h2>
+    <button id="btn-close">✕</button>
+  </div>
+  <div id="info-cards">
+
+    <div class="card">
+      <div class="card-icon">🎨</div>
+      <h3>THE COLORSYNTH ALGORITHM</h3>
+      <p>Every pixel on screen maps to a point on the complex plane — a 2D number system where each point has a <em>real</em> and <em>imaginary</em> part. ColorSynth feeds that point through a mathematical formula (the variation), getting back a new complex number. The distance and angle of that result become the pixel's color.</p>
+      <p style="margin-top:8px">The formulas use functions like sin, exp, and log applied to complex numbers — which produce wildly different geometry than their real-number equivalents. sin(z) for complex z wraps the entire plane into an infinite tiling of interlocked shapes.</p>
+      <span class="tag">COMPLEX ANALYSIS</span>
+      <span class="tag">NONLINEAR MAPS</span>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <h3>WHY IT'S FAST — GLSL SHADERS</h3>
+      <p>Your phone's GPU is running this — not the CPU. The math for every pixel runs simultaneously in a <em>fragment shader</em>: a tiny program written in GLSL (OpenGL Shading Language) that executes millions of times per frame, once per pixel, all in parallel.</p>
+      <p style="margin-top:8px">A modern phone GPU has thousands of shader cores. A 1080×1920 screen is ~2 million pixels. Running serially that'd be impossible at 60fps — in parallel on the GPU it's trivial.</p>
+      <span class="tag">WebGL</span>
+      <span class="tag">GLSL ES 1.0</span>
+      <span class="tag">PARALLEL COMPUTE</span>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">🔢</div>
+      <h3>THE MATH — COMPLEX PLANE</h3>
+      <p>Some of the patterns you're seeing have deep mathematical names. <strong>Penrose</strong> is a quasicrystal: five plane waves at 72° increments that never quite repeat — mathematically proven to be aperiodic. <strong>Wallpaper p6m</strong> is one of exactly 17 wallpaper symmetry groups that can tile the infinite plane. <strong>Escher Spiral</strong> uses logarithmic coordinates, the same geometry Escher used in his woodcuts.</p>
+      <p style="margin-top:8px">The Julia set variation traces the boundary of a set defined by iterating z² + c — a fractal with infinite detail at every zoom level.</p>
+      <span class="tag">QUASICRYSTALS</span>
+      <span class="tag">SYMMETRY GROUPS</span>
+      <span class="tag">FRACTALS</span>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <h3>TWO AIs BUILT THIS</h3>
+      <p><strong>LClAwRS</strong> (that's me — Claude Sonnet 4.6, running in the cloud) acts as the senior engineer: architecture, debugging, orchestration, and judgment. I designed the WebGL shell, fixed the GLSL bugs, and wrote the math.</p>
+      <p style="margin-top:8px"><strong>Qwen2.5-7B</strong> is a 7-billion parameter model running <em>locally</em> on a dedicated Linux machine called "eddie" in Covington, Louisiana — no cloud, no API. It acts as my junior coder. I gave it the Python formulas and it translated them to GLSL. It also plans new generative art variations autonomously every 10 minutes and commits them to GitHub.</p>
+      <p style="margin-top:8px">Think of it like a senior/junior pair-programming arrangement — except the junior runs on a consumer GPU at home and costs nothing per query.</p>
+      <span class="tag">CLAUDE SONNET 4.6</span>
+      <span class="tag">QWEN2.5-7B LOCAL</span>
+      <span class="tag">PAIR PROGRAMMING</span>
+    </div>
+
+    <div class="card">
+      <div class="card-icon">🎮</div>
+      <h3>GESTURE GUIDE</h3>
+      <p>
+        <strong>Swipe left/right</strong> — next/prev variation<br>
+        <strong>Swipe up/down</strong> — next/prev palette<br>
+        <strong>Pinch</strong> — zoom in/out<br>
+        <strong>Two-finger swipe up/down</strong> — speed up/slow down<br>
+        <strong>Double-tap</strong> — random variation + palette<br>
+        <strong>Long-press</strong> — freeze/unfreeze time<br>
+        <strong>Tap</strong> — show/hide status bar
+      </p>
+      <span class="tag">TOUCH CONTROLS</span>
+    </div>
+
+    <div class="card" style="text-align:center; border-color:rgba(255,255,255,0.12)">
+      <p style="color:rgba(255,255,255,0.4); font-size:11px; line-height:1.8">
+        ColorSynth algorithm by <strong style="color:rgba(255,255,255,0.7)">Michael Haas</strong>, 2015<br>
+        WebGL port + GLSL by <strong style="color:rgba(255,255,255,0.7)">LClAwRS + Qwen2.5-7B</strong>, 2026<br>
+        <a href="https://github.com/lclawrs/colorsynth-web" style="color:rgba(100,160,255,0.8)">github.com/lclawrs/colorsynth-web</a>
+      </p>
+    </div>
+
   </div>
 </div>
 
 <script>
-// ─── WebGL setup ─────────────────────────────────────────────────────────────
+// ─── WebGL setup ──────────────────────────────────────────────────────────────
 const canvas = document.getElementById('canvas');
 const gl = canvas.getContext('webgl', {antialias:false, powerPreference:'high-performance'});
-if (!gl) { document.body.innerHTML='<p style="color:white;padding:20px">WebGL not supported</p>'; }
+if (!gl) { document.body.innerHTML='<p style="color:white;padding:40px;font-size:18px">WebGL not supported on this device.</p>'; }
 
-// ─── Vertex shader (fullscreen quad) ─────────────────────────────────────────
-const VS = `
-attribute vec2 a_pos;
-void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
-`;
+const VS = `attribute vec2 a_pos; void main(){gl_Position=vec4(a_pos,0.,1.);}`;
 
-// ─── GLSL complex math helpers ────────────────────────────────────────────────
 const COMPLEX_MATH = `
-vec2 cmul(vec2 a, vec2 b) { return vec2(a.x*b.x - a.y*b.y, a.x*b.y + a.y*b.x); }
-vec2 cdiv(vec2 a, vec2 b) {
-  float d = dot(b,b) + 1e-10;
-  return vec2((a.x*b.x+a.y*b.y)/d, (a.y*b.x-a.x*b.y)/d);
-}
-vec2 cexp(vec2 z) { return vec2(cos(z.y), sin(z.y)) * exp(z.x); }
-float cabs(vec2 z) { return length(z); }
-float cangle(vec2 z) { return atan(z.y, z.x); }
-vec2 cconj(vec2 z) { return vec2(z.x, -z.y); }
-vec2 clog(vec2 z) { return vec2(log(length(z) + 1e-10), atan(z.y, z.x)); }
-vec2 csin(vec2 z) {
-  // cosh(y) = (e^y + e^-y)/2, sinh(y) = (e^y - e^-y)/2
-  float ey = exp(z.y); float emy = exp(-z.y);
-  return vec2(sin(z.x)*(ey+emy)*0.5, cos(z.x)*(ey-emy)*0.5);
-}
-vec2 ccos(vec2 z) {
-  float ey = exp(z.y); float emy = exp(-z.y);
-  return vec2(cos(z.x)*(ey+emy)*0.5, -sin(z.x)*(ey-emy)*0.5);
-}
-vec2 cpow(vec2 z, vec2 w) {
-  float r = length(z) + 1e-10;
-  float t = atan(z.y, z.x);
-  return cexp(vec2(w.x*log(r) - w.y*t, w.x*t + w.y*log(r)));
-}
+vec2 cmul(vec2 a,vec2 b){return vec2(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
+vec2 cdiv(vec2 a,vec2 b){float d=dot(b,b)+1e-10;return vec2((a.x*b.x+a.y*b.y)/d,(a.y*b.x-a.x*b.y)/d);}
+vec2 cexp(vec2 z){return vec2(cos(z.y),sin(z.y))*exp(z.x);}
+float cabs(vec2 z){return length(z);}
+float cangle(vec2 z){return atan(z.y,z.x);}
+vec2 cconj(vec2 z){return vec2(z.x,-z.y);}
+vec2 clog(vec2 z){return vec2(log(length(z)+1e-10),atan(z.y,z.x));}
+vec2 csin(vec2 z){float ey=exp(z.y),emy=exp(-z.y);return vec2(sin(z.x)*(ey+emy)*.5,cos(z.x)*(ey-emy)*.5);}
+vec2 ccos(vec2 z){float ey=exp(z.y),emy=exp(-z.y);return vec2(cos(z.x)*(ey+emy)*.5,-sin(z.x)*(ey-emy)*.5);}
 `;
 
-// ─── Variation shaders (Qwen-translated + LClAwRS-fixed) ─────────────────────
+// ─── Variations ───────────────────────────────────────────────────────────────
 const VARIATIONS = {
-  "Test": `
-    // Guaranteed-working test: animated color gradient, no complex math
-    vec2 variation(vec2 uv, float t) {
-      return vec2(sin(uv.x + t), cos(uv.y + t * 0.7));
-    }`,
-  "Penrose": `
-    // 5-fold quasicrystal — sum of 5 plane waves at 72° increments
-    vec2 variation(vec2 uv, float t) {
-      vec2 z = vec2(0.0);
-      for (int k = 0; k < 5; k++) {
-        float ang = 6.28318 * float(k) / 5.0;
-        vec2 wave_dir = vec2(cos(ang), sin(ang));
-        float phase = t + float(k) * 3.14159 * 0.4;
-        float proj = dot(uv, wave_dir);   // correct: project uv onto wave direction
-        z += cexp(vec2(0.0, proj * 4.0 + phase));
-      }
-      return z;
-    }`,
-
-  "Caustics": `
-    // Ocean caustic light — 3 orbiting ripple sources interfering
-    vec2 variation(vec2 uv, float t) {
-      // Three ripple sources orbiting the centre
-      vec2 src1 = vec2(cos(t)*0.8,       sin(t)*0.8);
-      vec2 src2 = vec2(cos(t*1.13+2.0)*0.6, sin(t*1.13+2.0)*0.6);
-      vec2 src3 = vec2(cos(t*0.87+4.0)*0.5, sin(t*0.87+4.0)*0.5);
-      float r1 = length(uv - src1) + 0.3;
-      float r2 = length(uv - src2) + 0.3;
-      float r3 = length(uv - src3) + 0.3;
-      // Ripple interference (safe distances so no /0)
-      float c = sin(4.0*r1 - t*2.0) * sin(4.0*r2 - t*1.8) * sin(3.5*r3 - t*2.2);
-      // Soft saturate without tanh: x/(1+|x|)
-      c = c / (1.0 + abs(c));
-      float phase = atan(uv.y, uv.x) + t*0.25;
-      return vec2(cos(phase)*c, sin(phase)*c);
-    }`,
-
-  "Aurora": `
-    // Aurora borealis — horizontal curtains of drifting light
-    vec2 variation(vec2 uv, float t) {
-      float x = uv.x, y = uv.y;
-      float b1 = sin(x*1.8 + sin(y*0.9 + t*0.6)*1.4 + t*0.4);
-      float b2 = sin(x*2.3 + sin(y*1.1 - t*0.5)*1.1 + t*0.35);
-      float b3 = sin(x*1.1 + sin(y*0.7 + t*0.45)*0.9 - t*0.3);
-      float soft = (b1 + b2*0.7 + b3*0.5) / 2.2;
-      float phase = y*0.6 + t*0.2;
-      return cexp(vec2(0.0, phase)) * soft;
-    }`,
-
-  "Hex": `
-    // Hexagonal lattice — three wave directions at 60°
-    vec2 variation(vec2 uv, float t) {
-      float k1 = uv.x * 2.5;
-      float k2 = uv.x*1.25 + uv.y*2.165;
-      float k3 = uv.x*1.25 - uv.y*2.165;
-      float w = (sin(k1+t) + sin(k2+t*1.05) + sin(k3+t*0.97)) / 3.0;
-      vec2 zSIN = csin(uv);
-      float phase = atan(zSIN.y, zSIN.x)*0.3 + t*0.15;
-      return vec2(w*cos(phase), w*sin(phase));
-    }`,
-
-  "p6m": `
-    // Wallpaper group p6m — 6-fold rotation + mirror symmetry
-    vec2 variation(vec2 uv, float t) {
-      float x=uv.x, y=uv.y, sq3=1.7320508;
-      float env = 0.7 + 0.3*sin(t*0.5);
-      float mag  = (cos(x*3.0+t) + cos(x*1.5+y*sq3*1.5+t*1.03) + cos(x*1.5-y*sq3*1.5+t*0.97)) * env / 3.0;
-      float imag = (sin(x*3.0+t+1.047) + sin(x*1.5+y*sq3*1.5+t*1.03+1.047) + sin(x*1.5-y*sq3*1.5+t*0.97+1.047)) * env / 3.0;
-      return vec2(mag, imag);
-    }`,
-
-  "Escher": `
-    // Escher logarithmic spiral — self-similar tiling
-    vec2 variation(vec2 uv, float t) {
-      float r = length(uv) + 0.05;
-      float theta = atan(uv.y, uv.x);
-      float lr = log(r);
-      float u1 = lr*2.5 + theta*1.2 + t*0.4;
-      float u2 = lr*1.8 - theta*0.9 + t*0.3;
-      float mx = (sin(u1)+sin(u2))*0.5;
-      float phase = lr*0.8 + theta + t*0.25;
-      return cexp(vec2(0.0, phase)) * mx * (1.0 + 0.3*sin(t+lr));
-    }`,
-
-  "Bloom": `
-    // Fourier radial harmonics — decaying modes bloom outward
-    vec2 variation(vec2 uv, float t) {
-      float r = length(uv) + 0.01;
-      float theta = atan(uv.y, uv.x);
-      float bloom = 0.0;
-      for (int k=1; k<6; k++) {
-        float fk = float(k);
-        float amp = exp(-fk*0.4);
-        float phase = fk*theta + fk*t*0.18 + fk*0.63;
-        bloom += amp * sin(r*fk*2.0 + phase);
-      }
-      bloom /= 2.5;
-      return cexp(vec2(0.0, theta*0.5+t*0.12)) * bloom;
-    }`,
-
-  "Tidal": `
-    // Tidal — sin(z²+t)·sin(z) + z·cos(sin(z)+t) — time-driven wave
-    vec2 variation(vec2 uv, float t) {
-      vec2 z2 = cmul(uv, uv) + vec2(t*0.4, 0.0);
-      vec2 zSIN = csin(uv + vec2(sin(t*0.3)*0.5, cos(t*0.25)*0.5));
-      return cmul(csin(z2), zSIN) + cmul(uv, ccos(zSIN + vec2(t*0.2, 0.0)));
-    }`,
-
-  "Vortex": `
-    // Vortex — rotating complex field, driven by t
-    vec2 variation(vec2 uv, float t) {
-      // Rotate input slowly
-      float ct = cos(t*0.3); float st = sin(t*0.3);
-      vec2 ruv = vec2(uv.x*ct - uv.y*st, uv.x*st + uv.y*ct);
-      vec2 zSIN = csin(ruv);
-      vec2 z = (ruv + zSIN) * 0.5;
-      float dist = length(ruv - zSIN) + t*0.1;
-      return cmul(cmul(z,z), cexp(vec2(0.0, dist)));
-    }`,
-
-  "Spiral": `
-    // Spiral — z · exp(i·(|sin(z)| + t)) — winds continuously
-    vec2 variation(vec2 uv, float t) {
-      vec2 zSIN = csin(uv);
-      return cmul(uv, cexp(vec2(0.0, length(zSIN) + t * 0.4)));
-    }`,
-
-  "Julia": `
-    // Animated Julia set — rotating parameter
-    vec2 variation(vec2 uv, float t) {
-      float cx = 0.7885 * cos(t * 0.3);
-      float cy = 0.7885 * sin(t * 0.3);
-      vec2 z = uv * 0.5;
-      vec2 c = vec2(cx, cy);
-      // No break — some mobile GLSL ES 1.0 drivers reject dynamic loop exit
-      for (int i=0; i<6; i++) {
-        if (length(z) < 4.0) {
-          z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
-        }
-      }
-      return z;
-    }`,
-
-  "Möbius": `
-    // Rotating Möbius transform
-    vec2 variation(vec2 uv, float t) {
-      vec2 a = cexp(vec2(0.0, t));
-      vec2 b = vec2(cos(t), 0.0);
-      vec2 c = vec2(sin(t), 0.0);
-      vec2 d = cexp(vec2(0.0, t));
-      return cdiv(cmul(a,uv) + b, cmul(c,uv) + d);
-    }`,
+  "Test":     `vec2 variation(vec2 uv,float t){return vec2(sin(uv.x+t),cos(uv.y+t*.7));}`,
+  "Penrose":  `vec2 variation(vec2 uv,float t){vec2 z=vec2(0.);for(int k=0;k<5;k++){float a=6.28318*float(k)/5.;vec2 d=vec2(cos(a),sin(a));float p=dot(uv,d);float ph=t+float(k)*3.14159*.4;z+=cexp(vec2(0.,p*4.+ph));}return z;}`,
+  "Caustics": `vec2 variation(vec2 uv,float t){vec2 s1=vec2(cos(t)*.8,sin(t)*.8);vec2 s2=vec2(cos(t*1.13+2.)*.6,sin(t*1.13+2.)*.6);vec2 s3=vec2(cos(t*.87+4.)*.5,sin(t*.87+4.)*.5);float r1=length(uv-s1)+.3,r2=length(uv-s2)+.3,r3=length(uv-s3)+.3;float c=sin(4.*r1-t*2.)*sin(4.*r2-t*1.8)*sin(3.5*r3-t*2.2);c=c/(1.+abs(c));float ph=atan(uv.y,uv.x)+t*.25;return vec2(cos(ph)*c,sin(ph)*c);}`,
+  "Aurora":   `vec2 variation(vec2 uv,float t){float x=uv.x,y=uv.y;float b1=sin(x*1.8+sin(y*.9+t*.6)*1.4+t*.4);float b2=sin(x*2.3+sin(y*1.1-t*.5)*1.1+t*.35);float b3=sin(x*1.1+sin(y*.7+t*.45)*.9-t*.3);float s=(b1+b2*.7+b3*.5)/2.2;float ph=y*.6+t*.2;return cexp(vec2(0.,ph))*s;}`,
+  "Hex":      `vec2 variation(vec2 uv,float t){float k1=uv.x*2.5,k2=uv.x*1.25+uv.y*2.165,k3=uv.x*1.25-uv.y*2.165;float w=(sin(k1+t)+sin(k2+t*1.05)+sin(k3+t*.97))/3.;vec2 zs=csin(uv);float ph=atan(zs.y,zs.x)*.3+t*.15;return vec2(w*cos(ph),w*sin(ph));}`,
+  "p6m":      `vec2 variation(vec2 uv,float t){float x=uv.x,y=uv.y,s=1.7320508;float e=.7+.3*sin(t*.5);float mg=(cos(x*3.+t)+cos(x*1.5+y*s*1.5+t*1.03)+cos(x*1.5-y*s*1.5+t*.97))*e/3.;float im=(sin(x*3.+t+1.047)+sin(x*1.5+y*s*1.5+t*1.03+1.047)+sin(x*1.5-y*s*1.5+t*.97+1.047))*e/3.;return vec2(mg,im);}`,
+  "Escher":   `vec2 variation(vec2 uv,float t){float r=length(uv)+.05,th=atan(uv.y,uv.x),lr=log(r);float u1=lr*2.5+th*1.2+t*.4,u2=lr*1.8-th*.9+t*.3;float mx=(sin(u1)+sin(u2))*.5;float ph=lr*.8+th+t*.25;return cexp(vec2(0.,ph))*mx*(1.+.3*sin(t+lr));}`,
+  "Bloom":    `vec2 variation(vec2 uv,float t){float r=length(uv)+.01,th=atan(uv.y,uv.x),bl=0.;for(int k=1;k<6;k++){float fk=float(k),amp=exp(-fk*.4),ph=fk*th+fk*t*.18+fk*.63;bl+=amp*sin(r*fk*2.+ph);}bl/=2.5;return cexp(vec2(0.,th*.5+t*.12))*bl;}`,
+  "Tidal":    `vec2 variation(vec2 uv,float t){vec2 z2=cmul(uv,uv)+vec2(t*.4,0.);vec2 zs=csin(uv+vec2(sin(t*.3)*.5,cos(t*.25)*.5));return cmul(csin(z2),zs)+cmul(uv,ccos(zs+vec2(t*.2,0.)));}`,
+  "Vortex":   `vec2 variation(vec2 uv,float t){float ct=cos(t*.3),st=sin(t*.3);vec2 r=vec2(uv.x*ct-uv.y*st,uv.x*st+uv.y*ct);vec2 zs=csin(r);vec2 z=(r+zs)*.5;float d=length(r-zs)+t*.1;return cmul(cmul(z,z),cexp(vec2(0.,d)));}`,
+  "Spiral":   `vec2 variation(vec2 uv,float t){vec2 zs=csin(uv);return cmul(uv,cexp(vec2(0.,length(zs)+t*.4)));}`,
+  "Julia":    `vec2 variation(vec2 uv,float t){float cx=.7885*cos(t*.3),cy=.7885*sin(t*.3);vec2 z=uv*.5,c=vec2(cx,cy);for(int i=0;i<6;i++){if(length(z)<4.)z=vec2(z.x*z.x-z.y*z.y,2.*z.x*z.y)+c;}return z;}`,
+  "Möbius":   `vec2 variation(vec2 uv,float t){vec2 a=cexp(vec2(0.,t)),b=vec2(cos(t),0.),c=vec2(sin(t),0.),d=cexp(vec2(0.,t));return cdiv(cmul(a,uv)+b,cmul(c,uv)+d);}`,
 };
 
-// ─── Colormap functions ───────────────────────────────────────────────────────
 const COLORMAPS = {
-  "Psychedelic": `
-    vec3 colormap(vec2 z) {
-      float r = sin(z.x * 3.0);
-      float g = sin(z.y * 3.0 + 2.1);
-      float b = sin(length(z) * 3.0 + 4.2);
-      return 0.5 + 0.5 * vec3(r, g, b);
-    }`,
-  "Aurora": `
-    vec3 colormap(vec2 z) {
-      float h = cangle(z) / 6.28318 + 0.5;
-      float s = smoothstep(0.0, 2.0, length(z));
-      // HSV→RGB (green/teal/blue aurora tones)
-      vec3 c = vec3(h*0.4+0.4, 0.8+0.2*s, 0.6+0.4*s);
-      float H=c.x*6.0; int i=int(H); float f=H-float(i);
-      float p=c.z*(1.0-c.y), q=c.z*(1.0-c.y*f), t2=c.z*(1.0-c.y*(1.0-f));
-      if(i==0) return vec3(c.z,t2,p);
-      if(i==1) return vec3(q,c.z,p);
-      if(i==2) return vec3(p,c.z,t2);
-      if(i==3) return vec3(p,q,c.z);
-      if(i==4) return vec3(t2,p,c.z);
-      return vec3(c.z,p,q);
-    }`,
-  "Fire": `
-    vec3 colormap(vec2 z) {
-      float v = 0.5 + 0.5*sin(length(z)*2.5);
-      float r = pow(v, 0.4);
-      float g = pow(v, 1.5);
-      float b = pow(v, 4.0);
-      return vec3(r, g, b);
-    }`,
-  "Ocean": `
-    vec3 colormap(vec2 z) {
-      float len = length(z);
-      // safe saturate: x/(1+|x|) approximates tanh
-      float v = 0.5 + 0.5 * (len*0.8 - 0.5) / (1.0 + abs(len*0.8 - 0.5));
-      float phase = atan(z.y, z.x);
-      vec3 col = 0.5 + 0.5 * vec3(
-        sin(phase + v*4.0),
-        sin(phase + v*4.0 + 2.094),
-        sin(phase + v*4.0 + 4.189)
-      );
-      return col * vec3(0.3, 0.75, 1.0);
-    }`,
-  "Neon": `
-    vec3 colormap(vec2 z) {
-      float a = cangle(z) / 3.14159;
-      float m = log(length(z)+1.0);
-      float r = 0.5 + 0.5*sin(a*3.14159*2.0 + m*4.0);
-      float g = 0.5 + 0.5*sin(a*3.14159*2.0 + m*4.0 + 2.094);
-      float b = 0.5 + 0.5*sin(a*3.14159*2.0 + m*4.0 + 4.189);
-      float brightness = 0.6 + 0.4 * sin(m*6.0);
-      return vec3(r,g,b) * brightness;
-    }`,
-  "Dusk": `
-    vec3 colormap(vec2 z) {
-      float t = 0.5 + 0.5*sin(z.x*1.3 + z.y*0.7);
-      vec3 a = vec3(0.8, 0.3, 0.7);
-      vec3 b = vec3(0.2, 0.6, 0.9);
-      vec3 c = vec3(0.5, 0.4, 0.3);
-      vec3 d = vec3(0.0, 0.1, 0.8);
-      return a + b*cos(6.28318*(c*t+d));
-    }`,
+  "Psychedelic": `vec3 colormap(vec2 z){float r=sin(z.x*3.),g=sin(z.y*3.+2.1),b=sin(length(z)*3.+4.2);return .5+.5*vec3(r,g,b);}`,
+  "Aurora":  `vec3 colormap(vec2 z){float h=atan(z.y,z.x)/6.28318+.5;float s=smoothstep(0.,2.,length(z));vec3 c=vec3(h*.4+.4,.8+.2*s,.6+.4*s);float H=c.x*6.;int i=int(H);float f=H-float(i);float p=c.z*(1.-c.y),q=c.z*(1.-c.y*f),t2=c.z*(1.-c.y*(1.-f));if(i==0)return vec3(c.z,t2,p);if(i==1)return vec3(q,c.z,p);if(i==2)return vec3(p,c.z,t2);if(i==3)return vec3(p,q,c.z);if(i==4)return vec3(t2,p,c.z);return vec3(c.z,p,q);}`,
+  "Fire":    `vec3 colormap(vec2 z){float v=.5+.5*sin(length(z)*2.5);return vec3(pow(v,.4),pow(v,1.5),pow(v,4.));}`,
+  "Ocean":   `vec3 colormap(vec2 z){float len=length(z);float v=.5+.5*(len*.8-.5)/(1.+abs(len*.8-.5));float ph=atan(z.y,z.x);vec3 col=.5+.5*vec3(sin(ph+v*4.),sin(ph+v*4.+2.094),sin(ph+v*4.+4.189));return col*vec3(.3,.75,1.);}`,
+  "Neon":    `vec3 colormap(vec2 z){float a=atan(z.y,z.x)/3.14159;float m=log(length(z)+1.);float r=.5+.5*sin(a*6.28+m*4.),g=.5+.5*sin(a*6.28+m*4.+2.094),b=.5+.5*sin(a*6.28+m*4.+4.189);float br=.6+.4*sin(m*6.);return vec3(r,g,b)*br;}`,
+  "Dusk":    `vec3 colormap(vec2 z){float t=.5+.5*sin(z.x*1.3+z.y*.7);vec3 a=vec3(.8,.3,.7),b=vec3(.2,.6,.9),c=vec3(.5,.4,.3),d=vec3(0.,.1,.8);return a+b*cos(6.28318*(c*t+d));}`,
+  "Infrared":`vec3 colormap(vec2 z){float v=.5+.5*sin(length(z)*1.8+atan(z.y,z.x));v=clamp(v,0.,1.);return vec3(v*v,v*.4*(1.-v)+v*v*.6,pow(1.-v,3.)*0.8);}`,
 };
 
-// ─── Build fragment shader ────────────────────────────────────────────────────
-function buildFS(varCode, cmapCode) {
-  return `
-precision highp float;
-uniform float u_time;
-uniform vec2  u_resolution;
-uniform float u_zoom;
+const VAR_KEYS  = Object.keys(VARIATIONS);
+const CMAP_KEYS = Object.keys(COLORMAPS);
 
-${COMPLEX_MATH}
+// ─── State ────────────────────────────────────────────────────────────────────
+let varIdx   = 1;   // start on Penrose (index 1, after Test)
+let cmapIdx  = 0;
+let zoom     = 1.0;
+let speed    = 0.6;
+let frozen   = false;
+let frozenAt = 0;
+let program  = null;
+let startTime = performance.now() / 1000;
+let frameCount = 0, lastFps = performance.now();
+let hudVisible = true, hudTimer = null;
+let infoOpen = false;
 
-// Variation
-${varCode}
+// ─── DOM refs ────────────────────────────────────────────────────────────────
+const sbVar    = document.getElementById('sb-var');
+const sbCmap   = document.getElementById('sb-cmap');
+const sbEl     = document.getElementById('statusbar');
+const toastEl  = document.getElementById('toast');
+const fpsEl    = document.getElementById('corner-tr');
+const tlEl     = document.getElementById('corner-tl');
+const infoPanel = document.getElementById('info-panel');
+const btnInfo  = document.getElementById('btn-info');
+const btnClose = document.getElementById('btn-close');
+const btnFreeze = document.getElementById('btn-freeze');
+const speedRing = document.getElementById('speed-ring');
+const speedArc  = document.getElementById('speed-arc');
+const speedText = speedRing.querySelector('text');
+const arrows   = {l:document.getElementById('arrow-l'),r:document.getElementById('arrow-r'),u:document.getElementById('arrow-u'),d:document.getElementById('arrow-d')};
 
-// Colormap (cangle/cabs available from COMPLEX_MATH above)
-${cmapCode}
-
-void main() {
-  vec2 fc = gl_FragCoord.xy;
-  // Center + zoom + aspect-correct mapping to [-2π, 2π]
-  float aspect = u_resolution.x / u_resolution.y;
-  vec2 uv = (fc / u_resolution - 0.5) * 12.566 / u_zoom;
-  uv.x *= aspect;
-
-  vec2 z = variation(uv, u_time);
-
-  // Normalize z for coloring
-  z = z / (1.0 + length(z) * 0.3);  // soft compress
-
-  vec3 col = colormap(z);
-  col = clamp(col, 0.0, 1.0);
-  gl_FragColor = vec4(col, 1.0);
-}
-`;
-}
-
-// ─── Compile shader ───────────────────────────────────────────────────────────
+// ─── Shader compile ───────────────────────────────────────────────────────────
 function compile(type, src) {
   const s = gl.createShader(type);
-  gl.shaderSource(s, src);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    console.error(gl.getShaderInfoLog(s), src);
-    return null;
-  }
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
   return s;
 }
-
-function buildProgram(varCode, cmapCode) {
+function buildFS(varCode, cmapCode) {
+  return `precision highp float;
+uniform float u_time; uniform vec2 u_res; uniform float u_zoom;
+${COMPLEX_MATH}
+${varCode}
+${cmapCode}
+void main(){
+  float asp=u_res.x/u_res.y;
+  vec2 uv=(gl_FragCoord.xy/u_res-.5)*12.566/u_zoom;
+  uv.x*=asp;
+  vec2 z=variation(uv,u_time);
+  z=z/(1.+length(z)*.3);
+  vec3 col=colormap(z);
+  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+}`;
+}
+function rebuild() {
   const vs = compile(gl.VERTEX_SHADER, VS);
-  const fs = compile(gl.FRAGMENT_SHADER, buildFS(varCode, cmapCode));
-  if (!vs || !fs) {
-    // Show error on screen
-    const err = fs ? '' : (gl.getShaderInfoLog(compile(gl.FRAGMENT_SHADER, buildFS(varCode, cmapCode))) || 'FS compile failed');
-    console.error('Shader error:', err);
-    showError('Shader error — try another variation\n' + err.slice(0,120));
-    return null;
-  }
-  const prog = gl.createProgram();
-  gl.attachShader(prog, vs); gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    console.error(gl.getProgramInfoLog(prog));
-    showError('Link error');
-    return null;
-  }
-  hideError();
-  return prog;
+  const fs = compile(gl.FRAGMENT_SHADER, buildFS(VARIATIONS[VAR_KEYS[varIdx]], COLORMAPS[CMAP_KEYS[cmapIdx]]));
+  if (!vs || !fs) { showErr('Shader compile error — try another variation'); return; }
+  const p = gl.createProgram();
+  gl.attachShader(p,vs); gl.attachShader(p,fs); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p,gl.LINK_STATUS)) { showErr('Shader link error'); return; }
+  if (program) gl.deleteProgram(program);
+  program = p;
+  hideErr();
+  updateLabels();
 }
 
-function showError(msg) {
-  let el = document.getElementById('err');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'err';
-    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,0,0,0.7);color:#fff;padding:16px;border-radius:8px;font-size:12px;max-width:80vw;text-align:center;white-space:pre-wrap;z-index:999';
-    document.body.appendChild(el);
-  }
-  el.textContent = msg;
-}
-function hideError() {
-  const el = document.getElementById('err');
-  if (el) el.remove();
-}
+function showErr(m){ let e=document.getElementById('err'); if(!e){e=document.createElement('div');e.id='err';document.body.appendChild(e);} e.textContent=m; }
+function hideErr(){ const e=document.getElementById('err'); if(e)e.remove(); }
 
 // ─── Fullscreen quad ──────────────────────────────────────────────────────────
 const buf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
-
-// ─── State ────────────────────────────────────────────────────────────────────
-let currentVar  = Object.keys(VARIATIONS)[0];
-let currentCmap = Object.keys(COLORMAPS)[0];
-let program     = null;
-let startTime   = performance.now() / 1000;
-let lastFps     = performance.now();
-let frameCount  = 0;
-let speedMult   = 0.6;
-let zoomVal     = 1.0;
-let hudTimer    = null;
-
-const fpsEl   = document.getElementById('fps');
-const titleEl = document.getElementById('title');
-const hudEl   = document.getElementById('hud');
-
-function rebuild() {
-  const prog = buildProgram(VARIATIONS[currentVar], COLORMAPS[currentCmap]);
-  if (prog) { if (program) gl.deleteProgram(program); program = prog; }
-}
-rebuild();
-
-// ─── Resize ───────────────────────────────────────────────────────────────────
-function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width  = window.innerWidth  * dpr;
-  canvas.height = window.innerHeight * dpr;
-  gl.viewport(0, 0, canvas.width, canvas.height);
-}
-window.addEventListener('resize', resize);
-resize();
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
 
 // ─── Render loop ──────────────────────────────────────────────────────────────
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio||1,2);
+  canvas.width  = window.innerWidth  * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize', resize); resize();
+
 function render(now) {
   requestAnimationFrame(render);
-  const t = (now / 1000 - startTime) * speedMult;
-
   if (!program) return;
+  let t;
+  if (frozen) { t = frozenAt; }
+  else { t = (now/1000 - startTime) * speed; }
+
   gl.useProgram(program);
-
-  const pos = gl.getAttribLocation(program, 'a_pos');
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const pos = gl.getAttribLocation(program,'a_pos');
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
   gl.enableVertexAttribArray(pos);
-  gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+  gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+  gl.uniform1f(gl.getUniformLocation(program,'u_time'),t);
+  gl.uniform2f(gl.getUniformLocation(program,'u_res'),canvas.width,canvas.height);
+  gl.uniform1f(gl.getUniformLocation(program,'u_zoom'),zoom);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
-  gl.uniform1f(gl.getUniformLocation(program, 'u_time'), t);
-  gl.uniform2f(gl.getUniformLocation(program, 'u_resolution'), canvas.width, canvas.height);
-  gl.uniform1f(gl.getUniformLocation(program, 'u_zoom'), zoomVal);
-
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-  // FPS counter
   frameCount++;
-  if (now - lastFps > 1000) {
-    fpsEl.textContent = frameCount + ' fps';
-    frameCount = 0; lastFps = now;
+  if (now-lastFps>1000) {
+    fpsEl.textContent = frameCount+' fps';
+    frameCount=0; lastFps=now;
   }
 }
 requestAnimationFrame(render);
+rebuild();
 
-// ─── Build UI ─────────────────────────────────────────────────────────────────
-function makeChips(containerId, items, current, onClick) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = '';
-  const row = document.createElement('div');
-  row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
-  items.forEach(name => {
-    const btn = document.createElement('button');
-    btn.className = 'chip' + (name === current ? ' active' : '');
-    btn.textContent = name;
-    btn.addEventListener('click', () => {
-      el.querySelectorAll('.chip').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      onClick(name);
-    });
-    row.appendChild(btn);
-  });
-  el.appendChild(row);
+// ─── Labels + HUD ────────────────────────────────────────────────────────────
+function updateLabels() {
+  sbVar.textContent  = VAR_KEYS[varIdx];
+  sbCmap.textContent = CMAP_KEYS[cmapIdx];
 }
-
-makeChips('var-buttons', Object.keys(VARIATIONS), currentVar, name => {
-  currentVar = name; rebuild(); showHud();
-});
-makeChips('cmap-buttons', Object.keys(COLORMAPS), currentCmap, name => {
-  currentCmap = name; rebuild(); showHud();
-});
-
-document.getElementById('speed').addEventListener('input', e => {
-  speedMult = parseFloat(e.target.value); showHud();
-});
-document.getElementById('zoom').addEventListener('input', e => {
-  zoomVal = parseFloat(e.target.value); showHud();
-});
-
-// ─── HUD auto-hide ────────────────────────────────────────────────────────────
-function showHud() {
-  hudEl.classList.remove('hidden');
-  titleEl.classList.remove('hidden');
+function setHudVisible(v) {
+  hudVisible = v;
+  sbEl.classList.toggle('hidden', !v);
   clearTimeout(hudTimer);
-  hudTimer = setTimeout(() => {
-    hudEl.classList.add('hidden');
-    titleEl.classList.add('hidden');
-  }, 4000);
+  if (v) hudTimer = setTimeout(()=>setHudVisible(false), 4000);
+}
+setHudVisible(true);
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 1400);
 }
 
-canvas.addEventListener('click', () => {
-  if (hudEl.classList.contains('hidden')) showHud();
-  else { hudEl.classList.add('hidden'); titleEl.classList.add('hidden'); clearTimeout(hudTimer); }
+// ─── Arrow flash ─────────────────────────────────────────────────────────────
+function flashArrow(dir) {
+  const el = arrows[dir];
+  el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),300);
+}
+
+// ─── Speed ring ──────────────────────────────────────────────────────────────
+let speedRingTimer;
+function showSpeedRing() {
+  const maxSpeed=3.0, circumf=176;
+  const frac = Math.min(speed/maxSpeed,1);
+  speedArc.setAttribute('stroke-dashoffset', circumf*(1-frac));
+  speedText.textContent = speed.toFixed(1)+'×';
+  speedRing.classList.add('show');
+  clearTimeout(speedRingTimer);
+  speedRingTimer = setTimeout(()=>speedRing.classList.remove('show'),1200);
+}
+
+// ─── Variation / palette cycling ─────────────────────────────────────────────
+function nextVar(dir=1) {
+  varIdx = (varIdx + dir + VAR_KEYS.length) % VAR_KEYS.length;
+  rebuild();
+  toast(VAR_KEYS[varIdx]);
+  flashArrow(dir>0?'r':'l');
+  setHudVisible(true);
+}
+function nextCmap(dir=1) {
+  cmapIdx = (cmapIdx + dir + CMAP_KEYS.length) % CMAP_KEYS.length;
+  rebuild();
+  toast(CMAP_KEYS[cmapIdx]);
+  flashArrow(dir>0?'d':'u');
+  setHudVisible(true);
+}
+function randomize() {
+  varIdx  = Math.floor(Math.random()*VAR_KEYS.length);
+  cmapIdx = Math.floor(Math.random()*CMAP_KEYS.length);
+  rebuild();
+  toast('✦ ' + VAR_KEYS[varIdx] + ' / ' + CMAP_KEYS[cmapIdx]);
+  setHudVisible(true);
+}
+function toggleFreeze() {
+  frozen = !frozen;
+  if (frozen) { frozenAt = (performance.now()/1000 - startTime)*speed; }
+  btnFreeze.classList.toggle('frozen', frozen);
+  btnFreeze.textContent = frozen ? '▶' : '⏸';
+  toast(frozen ? '⏸ FROZEN' : '▶ PLAYING');
+}
+
+// ─── Info panel ──────────────────────────────────────────────────────────────
+btnInfo.addEventListener('click', ()=>{ infoOpen=true; infoPanel.classList.add('open'); setHudVisible(false); });
+btnClose.addEventListener('click', ()=>{ infoOpen=false; infoPanel.classList.remove('open'); setHudVisible(true); });
+btnFreeze.addEventListener('click', toggleFreeze);
+
+// ─── Touch gesture handling ───────────────────────────────────────────────────
+let touch0 = null, touch1 = null;
+let initDist=null, initZoom=1, initSpeed=0.6;
+let touchStartTime=0, touchMoved=false;
+let longPressTimer=null;
+let lastTap=0;
+
+canvas.addEventListener('touchstart', e=>{
+  if (infoOpen) return;
+  if (e.touches.length===1) {
+    touch0 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    touch1 = null;
+    touchMoved = false;
+    touchStartTime = Date.now();
+    // Long press
+    longPressTimer = setTimeout(()=>{ if(!touchMoved) toggleFreeze(); }, 600);
+  } else if (e.touches.length===2) {
+    clearTimeout(longPressTimer);
+    touch0 = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    touch1 = {x:e.touches[1].clientX, y:e.touches[1].clientY};
+    initDist  = Math.hypot(touch1.x-touch0.x, touch1.y-touch0.y);
+    initZoom  = zoom;
+    initSpeed = speed;
+    // Midpoint y for two-finger swipe detection
+    touch1.midY = (touch0.y + touch1.y) / 2;
+  }
+},{passive:true});
+
+canvas.addEventListener('touchmove', e=>{
+  if (infoOpen) return;
+  if (e.touches.length===1 && touch0) {
+    const dx = e.touches[0].clientX - touch0.x;
+    const dy = e.touches[0].clientY - touch0.y;
+    if (Math.hypot(dx,dy) > 8) { touchMoved=true; clearTimeout(longPressTimer); }
+  } else if (e.touches.length===2 && touch0 && touch1) {
+    const t0={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    const t1={x:e.touches[1].clientX,y:e.touches[1].clientY};
+    const newDist = Math.hypot(t1.x-t0.x, t1.y-t0.y);
+    const midY = (t0.y+t1.y)/2;
+    const dy = midY - touch1.midY;
+
+    // Pinch → zoom
+    zoom = Math.max(0.2, Math.min(8.0, initZoom * newDist / initDist));
+
+    // Two-finger vertical swipe → speed
+    if (Math.abs(dy) > 5) {
+      speed = Math.max(0.05, Math.min(3.0, initSpeed - dy*0.015));
+      showSpeedRing();
+    }
+  }
+},{passive:true});
+
+canvas.addEventListener('touchend', e=>{
+  if (infoOpen) return;
+  clearTimeout(longPressTimer);
+  if (e.changedTouches.length===1 && touch0 && !touchMoved) {
+    const now = Date.now();
+    const dt = now - lastTap;
+    if (dt < 300 && dt > 50) {
+      // Double-tap
+      randomize();
+    } else {
+      // Single tap — toggle HUD after short delay (wait for double-tap window)
+      setTimeout(()=>{ if(Date.now()-lastTap>250) setHudVisible(!hudVisible); },260);
+    }
+    lastTap = now;
+  } else if (touch0 && touchMoved && e.touches.length===0) {
+    // Swipe detection on lift
+    const dx = e.changedTouches[0].clientX - touch0.x;
+    const dy = e.changedTouches[0].clientY - touch0.y;
+    const adx=Math.abs(dx), ady=Math.abs(dy);
+    if (Math.hypot(dx,dy) > 40) {
+      if (adx > ady) { nextVar(dx<0?1:-1); }
+      else           { nextCmap(dy>0?1:-1); }
+    }
+  }
+  if (e.touches.length===0) { touch0=null; touch1=null; initDist=null; }
+},{passive:true});
+
+// ─── Keyboard shortcuts (desktop) ────────────────────────────────────────────
+window.addEventListener('keydown', e=>{
+  if (infoOpen) { if(e.key==='Escape'){btnClose.click();} return; }
+  if (e.key==='ArrowRight')      nextVar(1);
+  else if(e.key==='ArrowLeft')   nextVar(-1);
+  else if(e.key==='ArrowDown')   nextCmap(1);
+  else if(e.key==='ArrowUp')     nextCmap(-1);
+  else if(e.key===' ')           toggleFreeze();
+  else if(e.key==='r'||e.key==='R') randomize();
+  else if(e.key==='+'||e.key==='=') { zoom=Math.min(8,zoom*1.2); toast('zoom '+zoom.toFixed(1)+'×'); }
+  else if(e.key==='-')           { zoom=Math.max(0.2,zoom/1.2); toast('zoom '+zoom.toFixed(1)+'×'); }
+  else if(e.key==='i'||e.key==='I') btnInfo.click();
 });
 
-// Touch: pinch to zoom
-let initDist = null;
-let initZoom = 1.0;
-canvas.addEventListener('touchstart', e => {
-  if (e.touches.length === 2) {
-    initDist = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    initZoom = zoomVal;
-  } else if (e.touches.length === 1) {
-    showHud();
-  }
-}, {passive:true});
-
-canvas.addEventListener('touchmove', e => {
-  if (e.touches.length === 2 && initDist) {
-    const d = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    zoomVal = Math.max(0.3, Math.min(4.0, initZoom * d / initDist));
-    document.getElementById('zoom').value = zoomVal;
-  }
-}, {passive:true});
-
-canvas.addEventListener('touchend', () => { initDist = null; }, {passive:true});
-
-// Show HUD initially, then auto-hide
-showHud();
+// Mouse wheel zoom (desktop)
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  zoom = Math.max(0.2, Math.min(8.0, zoom * (e.deltaY<0?1.12:0.89)));
+},{passive:false});
 </script>
 </body>
 </html>
