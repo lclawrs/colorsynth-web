@@ -407,6 +407,7 @@ let startTime = performance.now() / 1000;
 let frameCount = 0, lastFps = performance.now();
 let hudVisible = true, hudTimer = null;
 let infoOpen = false;
+let settingsOpen = false;
 
 // ─── DOM refs ────────────────────────────────────────────────────────────────
 const sbVar    = document.getElementById('sb-var');
@@ -613,8 +614,6 @@ function syncSliders() {
 }
 
 // ─── Panel open/close ─────────────────────────────────────────────────────────
-let settingsOpen = false;
-
 function openSettings() {
   settingsOpen = true; infoOpen = false;
   refreshSettingsChips(); syncSliders();
