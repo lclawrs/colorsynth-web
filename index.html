@@ -22,7 +22,7 @@ html, body {
 /* Animated background */
 #bg-canvas {
   position:fixed; inset:0; width:100%; height:100%;
-  opacity:0.18; pointer-events:none; z-index:0;
+  opacity:0.06; pointer-events:none; z-index:0;
 }
 
 .page { position:relative; z-index:1; padding:0 0 40px; }
@@ -31,22 +31,25 @@ html, body {
 header {
   padding: 52px 24px 32px;
   text-align: center;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
   margin-bottom: 32px;
+  background:rgba(0,0,0,0.6);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
 }
 .logo-mark {
   font-size: 11px; letter-spacing: 5px;
-  color: rgba(255,255,255,0.35); margin-bottom: 12px;
+  color: rgba(255,255,255,0.65); margin-bottom: 12px;
 }
 header h1 {
   font-size: clamp(28px, 8vw, 52px);
   font-weight: normal; letter-spacing: 4px;
   color: #fff; line-height:1;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.9);
 }
-header h1 span { color: rgba(255,255,255,0.35); }
+header h1 span { color: rgba(255,255,255,0.55); }
 .tagline {
   margin-top: 12px; font-size: 12px; letter-spacing: 2px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.7);
 }
 
 /* Experiment grid */
@@ -60,14 +63,14 @@ header h1 span { color: rgba(255,255,255,0.35); }
 /* Cards */
 .card {
   position: relative; border-radius: 16px; overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.1);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(8,8,12,0.90); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   cursor: pointer; text-decoration: none; display: block;
   transition: border-color 0.2s, transform 0.15s, background 0.2s;
   -webkit-user-select: none;
 }
-.card:active { transform: scale(0.97); background: rgba(255,255,255,0.08); }
-.card:hover  { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.06); }
+.card:active { transform: scale(0.97); background: rgba(20,20,28,0.96); }
+.card:hover  { border-color: rgba(255,255,255,0.25); background: rgba(14,14,20,0.93); }
 
 /* Preview canvas inside each card */
 .card-preview {
@@ -79,14 +82,14 @@ header h1 span { color: rgba(255,255,255,0.35); }
 .card-tag {
   display: inline-block; font-size: 9px; letter-spacing: 2px;
   padding: 3px 10px; border-radius: 10px;
-  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.5); margin-bottom: 10px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.8); margin-bottom: 10px;
 }
-.card h2 { font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; font-weight:normal; }
-.card p  { font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.7; }
+.card h2 { font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; font-weight:normal; color:#fff; }
+.card p  { font-size: 13px; color: rgba(255,255,255,0.82); line-height: 1.75; }
 .card-arrow {
   position: absolute; top: 18px; right: 18px;
-  color: rgba(255,255,255,0.3); font-size: 18px;
+  color: rgba(255,255,255,0.55); font-size: 18px;
 }
 
 /* Coming soon card */
