@@ -242,10 +242,10 @@ const VARIATIONS = {
     }`,
 
   "Spiral": `
-    // Spiral — z · exp(i·|sin(z)|)
+    // Spiral — z · exp(i·(|sin(z)| + t)) — winds continuously
     vec2 variation(vec2 uv, float t) {
       vec2 zSIN = csin(uv);
-      return cmul(uv, cexp(vec2(0.0, length(zSIN))));
+      return cmul(uv, cexp(vec2(0.0, length(zSIN) + t * 0.4)));
     }`,
 
   "Julia": `
