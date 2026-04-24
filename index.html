@@ -104,10 +104,13 @@ float cangle(vec2 z) { return atan(z.y, z.x); }
 vec2 cconj(vec2 z) { return vec2(z.x, -z.y); }
 vec2 clog(vec2 z) { return vec2(log(length(z) + 1e-10), atan(z.y, z.x)); }
 vec2 csin(vec2 z) {
-  return vec2(sin(z.x)*cosh(z.y), cos(z.x)*sinh(z.y));
+  // cosh(y) = (e^y + e^-y)/2, sinh(y) = (e^y - e^-y)/2
+  float ey = exp(z.y); float emy = exp(-z.y);
+  return vec2(sin(z.x)*(ey+emy)*0.5, cos(z.x)*(ey-emy)*0.5);
 }
 vec2 ccos(vec2 z) {
-  return vec2(cos(z.x)*cosh(z.y), -sin(z.x)*sinh(z.y));
+  float ey = exp(z.y); float emy = exp(-z.y);
+  return vec2(cos(z.x)*(ey+emy)*0.5, -sin(z.x)*(ey-emy)*0.5);
 }
 vec2 cpow(vec2 z, vec2 w) {
   float r = length(z) + 1e-10;
@@ -118,6 +121,11 @@ vec2 cpow(vec2 z, vec2 w) {
 
 // ─── Variation shaders (Qwen-translated + LClAwRS-fixed) ─────────────────────
 const VARIATIONS = {
+  "Test": `
+    // Guaranteed-working test: animated color gradient, no complex math
+    vec2 variation(vec2 uv, float t) {
+      return vec2(sin(uv.x + t), cos(uv.y + t * 0.7));
+    }`,
   "Penrose": `
     // 5-fold quasicrystal — sum of 5 plane waves at 72° increments
     vec2 variation(vec2 uv, float t) {
@@ -242,9 +250,11 @@ const VARIATIONS = {
       float cy = 0.7885 * sin(t * 0.3);
       vec2 z = uv * 0.5;
       vec2 c = vec2(cx, cy);
+      // No break — some mobile GLSL ES 1.0 drivers reject dynamic loop exit
       for (int i=0; i<6; i++) {
-        z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
-        if (length(z) > 4.0) break;
+        if (length(z) < 4.0) {
+          z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+        }
       }
       return z;
     }`,
@@ -326,18 +336,18 @@ const COLORMAPS = {
 // ─── Build fragment shader ────────────────────────────────────────────────────
 function buildFS(varCode, cmapCode) {
   return `
-precision mediump float;
+precision highp float;
 uniform float u_time;
 uniform vec2  u_resolution;
 uniform float u_zoom;
 
 ${COMPLEX_MATH}
 
-// Colormap needs cangle
-${cmapCode}
-
 // Variation
 ${varCode}
+
+// Colormap (cangle/cabs available from COMPLEX_MATH above)
+${cmapCode}
 
 void main() {
   vec2 fc = gl_FragCoord.xy;
@@ -373,15 +383,38 @@ function compile(type, src) {
 function buildProgram(varCode, cmapCode) {
   const vs = compile(gl.VERTEX_SHADER, VS);
   const fs = compile(gl.FRAGMENT_SHADER, buildFS(varCode, cmapCode));
-  if (!vs || !fs) return null;
+  if (!vs || !fs) {
+    // Show error on screen
+    const err = fs ? '' : (gl.getShaderInfoLog(compile(gl.FRAGMENT_SHADER, buildFS(varCode, cmapCode))) || 'FS compile failed');
+    console.error('Shader error:', err);
+    showError('Shader error — try another variation\n' + err.slice(0,120));
+    return null;
+  }
   const prog = gl.createProgram();
   gl.attachShader(prog, vs); gl.attachShader(prog, fs);
   gl.linkProgram(prog);
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
     console.error(gl.getProgramInfoLog(prog));
+    showError('Link error');
     return null;
   }
+  hideError();
   return prog;
+}
+
+function showError(msg) {
+  let el = document.getElementById('err');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'err';
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,0,0,0.7);color:#fff;padding:16px;border-radius:8px;font-size:12px;max-width:80vw;text-align:center;white-space:pre-wrap;z-index:999';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+}
+function hideError() {
+  const el = document.getElementById('err');
+  if (el) el.remove();
 }
 
 // ─── Fullscreen quad ──────────────────────────────────────────────────────────
