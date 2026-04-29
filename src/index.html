@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ColorSynth Lab">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>ColorSynth Lab</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body {
+  width:100%; min-height:100%;
+  background:#000; color:#fff;
+  font-family:'Courier New', monospace;
+  overflow-x:hidden;
+}
+@supports (-webkit-touch-callout:none) { html,body { min-height:-webkit-fill-available; } }
+
+/* Animated background */
+#bg-canvas {
+  position:fixed; inset:0; width:100%; height:100%;
+  opacity:0.13; pointer-events:none; z-index:0;
+}
+
+.page { position:relative; z-index:1; padding:0 0 40px; }
+
+/* Header */
+header {
+  padding: 52px 24px 32px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  margin-bottom: 32px;
+  background:rgba(0,0,0,0.6);
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+}
+.logo-mark {
+  font-size: 11px; letter-spacing: 5px;
+  color: rgba(255,255,255,0.65); margin-bottom: 12px;
+}
+header h1 {
+  font-size: clamp(28px, 8vw, 52px);
+  font-weight: normal; letter-spacing: 4px;
+  color: #fff; line-height:1;
+  text-shadow: 0 2px 20px rgba(0,0,0,0.9);
+}
+header h1 span { color: rgba(255,255,255,0.55); }
+.tagline {
+  margin-top: 12px; font-size: 12px; letter-spacing: 2px;
+  color: rgba(255,255,255,0.7);
+}
+
+/* Experiment grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 16px; padding: 0 16px;
+  max-width: 900px; margin: 0 auto;
+}
+
+/* Cards */
+.card {
+  position: relative; border-radius: 16px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(8,8,12,0.90); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  cursor: pointer; text-decoration: none; display: block;
+  transition: border-color 0.2s, transform 0.15s, background 0.2s;
+  -webkit-user-select: none;
+}
+.card:active { transform: scale(0.97); background: rgba(20,20,28,0.96); }
+.card:hover  { border-color: rgba(255,255,255,0.25); background: rgba(14,14,20,0.93); }
+
+/* Preview canvas inside each card */
+.card-preview {
+  width: 100%; aspect-ratio: 16/9;
+  background: #000; display: block;
+}
+
+.card-body { padding: 18px 20px 20px; }
+.card-tag {
+  display: inline-block; font-size: 9px; letter-spacing: 2px;
+  padding: 3px 10px; border-radius: 10px;
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.8); margin-bottom: 10px;
+}
+.card h2 { font-size: 18px; letter-spacing: 1px; margin-bottom: 6px; font-weight:normal; color:#fff; }
+.card p  { font-size: 13px; color: rgba(255,255,255,0.82); line-height: 1.75; }
+.card-arrow {
+  position: absolute; top: 18px; right: 18px;
+  color: rgba(255,255,255,0.55); font-size: 18px;
+}
+
+/* Coming soon card */
+.card.soon { opacity: 0.45; cursor: default; pointer-events: none; }
+.card.soon .card-tag { border-color: rgba(255,100,0,0.3); color: rgba(255,160,0,0.7); }
+
+/* Footer */
+footer {
+  margin-top: 48px; padding: 24px;
+  text-align: center; border-top: 1px solid rgba(255,255,255,0.07);
+  font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.2);
+}
+footer a { color: rgba(100,160,255,0.5); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<!-- Ambient background (live mini ColorSynth) -->
+<canvas id="bg-canvas"></canvas>
+
+<div class="page">
+  <header>
+    <div class="logo-mark">✦ LCLAWRS × COLORSYNTH</div>
+    <h1>COLOR<span>SYNTH</span><br>LAB</h1>
+    <div class="tagline">GENERATIVE MATH ART · WEBGL · AI-BUILT</div>
+  </header>
+
+  <div class="grid">
+
+    <a class="card" href="experiments/colorsynth.html">
+      <canvas class="card-preview" id="prev-2d"></canvas>
+      <div class="card-body">
+        <div class="card-tag">2D · COMPLEX PLANE</div>
+        <h2>ColorSynth Classic</h2>
+        <p>Real-time complex math mapped to color. 13 variations, 7 palettes, gesture controls. The original algorithm by Michael Haas, 2015.</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </a>
+
+    <a class="card" href="experiments/objects3d.html">
+      <canvas class="card-preview" id="prev-3d"></canvas>
+      <div class="card-body">
+        <div class="card-tag">3D · RAYMARCHING · SDF</div>
+        <h2>3D Objects</h2>
+        <p>Sphere, torus, cube, and a custom ColorSynth logo — all shaded with ColorSynth math on their surfaces. Pure GLSL raymarching, no Three.js.</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </a>
+
+    <a class="card" href="experiments/audio.html">
+      <canvas class="card-preview" id="prev-audio"></canvas>
+      <div class="card-body">
+        <div class="card-tag">AUDIO · FFT · BEAT DETECT</div>
+        <h2>Audio Reactive</h2>
+        <p>Microphone FFT drives ColorSynth in real time. Bass, mids, and highs each shape the math differently. Beat detection flashes the field on kick drums.</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </a>
+
+    <a class="card" href="experiments/fractal/">
+      <canvas class="card-preview" id="prev-fractal"></canvas>
+      <div class="card-body">
+        <div class="card-tag">FRACTAL · MANDELBROT · JULIA</div>
+        <h2>Fractal Explorer</h2>
+        <p>Infinite zoom into the Mandelbrot set. Switch to Julia mode for animated parameter sweeps. Smooth coloring, orbit traps, 5 ColorSynth palettes.</p>
+      </div>
+      <div class="card-arrow">→</div>
+    </a>
+
+  </div>
+
+  <footer>
+    <p>Built by <a href="https://github.com/lclawrs">LClAwRS</a> (Claude Sonnet 4.6) + Qwen2.5-7B on eddie &nbsp;·&nbsp; <a href="https://github.com/lclawrs/colorsynth-web">source</a></p>
+  </footer>
+</div>
+
+<script>
+// ── Ambient background — tiny live ColorSynth render ──────────────────────────
+const bgCanvas = document.getElementById('bg-canvas');
+const gl = bgCanvas.getContext('webgl', {antialias:false});
+if (gl) {
+  const VS = `attribute vec2 p; void main(){gl_Position=vec4(p,0.,1.);}`;
+  const FS = `precision mediump float;
+uniform float t; uniform vec2 res;
+void main(){
+  vec2 uv=(gl_FragCoord.xy/res-.5)*12.;
+  uv.x*=res.x/res.y;
+  // Penrose quasicrystal
+  vec2 z=vec2(0.);
+  for(int k=0;k<5;k++){
+    float a=6.28318*float(k)/5.;
+    float proj=uv.x*cos(a)+uv.y*sin(a);
+    float ph=t*.3+float(k)*1.2566;
+    z+=vec2(cos(proj*4.+ph),sin(proj*4.+ph));
+  }
+  z=z/(1.+length(z)*.3);
+  float r=sin(z.x*3.),g=sin(z.y*3.+2.1),b=sin(length(z)*3.+4.2);
+  gl_FragColor=vec4(.5+.5*vec3(r,g,b),1.);
+}`;
+  function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s;}
+  const prog=gl.createProgram();
+  gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const pos=gl.getAttribLocation(prog,'p');
+  gl.enableVertexAttribArray(pos);
+  gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+  const uT=gl.getUniformLocation(prog,'t');
+  const uR=gl.getUniformLocation(prog,'res');
+  function resize(){
+    const dpr=Math.min(window.devicePixelRatio||1,1.5);
+    bgCanvas.width=window.innerWidth*dpr;
+    bgCanvas.height=window.innerHeight*dpr;
+    gl.viewport(0,0,bgCanvas.width,bgCanvas.height);
+  }
+  window.addEventListener('resize',resize); resize();
+  function loop(now){
+    requestAnimationFrame(loop);
+    gl.uniform1f(uT,now/1000);
+    gl.uniform2f(uR,bgCanvas.width,bgCanvas.height);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Card preview canvases ─────────────────────────────────────────────────────
+// Preview for 2D card — Aurora variation
+function initPreview2D(canvas) {
+  const g = canvas.getContext('webgl',{antialias:false});
+  if (!g) return;
+  const FS = `precision mediump float;
+uniform float t; uniform vec2 res;
+void main(){
+  vec2 uv=(gl_FragCoord.xy/res-.5)*12.;
+  uv.x*=res.x/res.y;
+  float x=uv.x,y=uv.y;
+  float b1=sin(x*1.8+sin(y*.9+t*.6)*1.4+t*.4);
+  float b2=sin(x*2.3+sin(y*1.1-t*.5)*1.1+t*.35);
+  float b3=sin(x*1.1+sin(y*.7+t*.45)*.9-t*.3);
+  float s=(b1+b2*.7+b3*.5)/2.2;
+  float ph=y*.6+t*.2;
+  float re=s*cos(ph), im=s*sin(ph);
+  vec2 z=vec2(re,im)/(1.+length(vec2(re,im))*.3);
+  float r=sin(z.x*3.),gg=sin(z.y*3.+2.1),b=sin(length(z)*3.+4.2);
+  gl_FragColor=vec4(.5+.5*vec3(r,gg,b),1.);
+}`;
+  setupPreview(g, FS);
+}
+
+// Preview for 3D card — simple raymarched sphere
+function initPreview3D(canvas) {
+  const g = canvas.getContext('webgl',{antialias:false});
+  if (!g) return;
+  const FS = `precision mediump float;
+uniform float t; uniform vec2 res;
+float sph(vec3 p){return length(p)-.9;}
+float tor(vec3 p){vec2 q=vec2(length(p.xz)-.5,p.y);return length(q)-.22;}
+vec3 norm(vec3 p){float e=.001;return normalize(vec3(sph(p+vec3(e,0,0))-sph(p-vec3(e,0,0)),sph(p+vec3(0,e,0))-sph(p-vec3(0,e,0)),sph(p+vec3(0,0,e))-sph(p-vec3(0,0,e))));}
+void main(){
+  vec2 uv=(gl_FragCoord.xy/res-.5)*vec2(res.x/res.y,1.)*2.;
+  vec3 ro=vec3(sin(t*.4)*2.,cos(t*.25)*.8,cos(t*.4)*2.);
+  vec3 rd=normalize(vec3(uv,-1.5));
+  // rotate rd with camera
+  vec3 fwd=normalize(-ro); vec3 right=normalize(cross(fwd,vec3(0,1,0))); vec3 up2=cross(right,fwd);
+  rd=normalize(rd.x*right+rd.y*up2+rd.z*fwd);
+  float d=0.; vec3 col=vec3(.05,.05,.08);
+  for(int i=0;i<64;i++){
+    vec3 p=ro+rd*d;
+    float h=sph(p); if(h<.001){
+      vec3 n=norm(p); float diff=max(dot(n,normalize(vec3(1,2,1))),0.);
+      vec2 z=vec2(p.x+t*.3,p.y+p.z);
+      z=z/(1.+length(z)*.3);
+      float r=.5+.5*sin(z.x*3.); float gg=.5+.5*sin(z.y*3.+2.1); float b=.5+.5*sin(length(z)*3.+4.2);
+      col=vec3(r,gg,b)*(diff*.8+.3); break;
+    } d+=h; if(d>6.)break;
+  }
+  gl_FragColor=vec4(col,1.);
+}`;
+  setupPreview(g, FS);
+}
+
+function setupPreview(g, FS) {
+  const VS=`attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}`;
+  function sh(type,src){const s=g.createShader(type);g.shaderSource(s,src);g.compileShader(s);return s;}
+  const prog=g.createProgram();
+  g.attachShader(prog,sh(g.VERTEX_SHADER,VS));
+  g.attachShader(prog,sh(g.FRAGMENT_SHADER,FS));
+  g.linkProgram(prog); g.useProgram(prog);
+  const buf=g.createBuffer();
+  g.bindBuffer(g.ARRAY_BUFFER,buf);
+  g.bufferData(g.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),g.STATIC_DRAW);
+  const pos=g.getAttribLocation(prog,'p');
+  g.enableVertexAttribArray(pos);
+  g.vertexAttribPointer(pos,2,g.FLOAT,false,0,0);
+  const uT=g.getUniformLocation(prog,'t');
+  const uR=g.getUniformLocation(prog,'res');
+  const dpr=Math.min(window.devicePixelRatio||1,1.5);
+  const cv = g.canvas;
+  cv.width=cv.clientWidth*dpr; cv.height=cv.clientHeight*dpr;
+  g.viewport(0,0,cv.width,cv.height);
+  function loop(now){
+    requestAnimationFrame(loop);
+    g.uniform1f(uT,now/1000);
+    g.uniform2f(uR,cv.width,cv.height);
+    g.drawArrays(g.TRIANGLE_STRIP,0,4);
+  }
+  requestAnimationFrame(loop);
+}
+
+// Preview for audio card — Bloom variation with animated "fake audio" pulses
+function initPreviewAudio(canvas) {
+  if (!canvas) return;
+  const g = canvas.getContext('webgl',{antialias:false});
+  if (!g) return;
+  const FS = `precision mediump float;
+uniform float t; uniform vec2 res;
+void main(){
+  vec2 uv=(gl_FragCoord.xy/res-.5)*12.;
+  uv.x*=res.x/res.y;
+  // Simulated bass pulse
+  float bass=0.5+0.5*sin(t*2.1)*sin(t*0.7);
+  float beat=max(0.,sin(t*3.14)*0.8);
+  float r=length(uv)+.01;
+  float th=atan(uv.y,uv.x);
+  float bl=0.;
+  for(int k=1;k<6;k++){
+    float fk=float(k);
+    float amp=exp(-fk*0.4)*(1.+bass*2.);
+    float ph=fk*th+fk*t*(0.18+0.3*bass)+fk*0.63;
+    bl+=amp*sin(r*fk*2.+ph);
+  }
+  bl/=2.5;
+  vec2 z=vec2(cos(th*.5+t*.12)*bl, sin(th*.5+t*.12)*bl);
+  z=z/(1.+length(z)*.3);
+  float r2=.5+.5*sin(z.x*3.);
+  float g2=.5+.5*sin(z.y*3.+2.094);
+  float b=.5+.5*sin(length(z)*3.+4.189);
+  vec3 col=mix(vec3(r2,g2,b), vec3(1.), beat*.3);
+  col=mix(col, col*vec3(1.4,.9,.7), bass*.4);
+  gl_FragColor=vec4(clamp(col,0.,1.),1.);
+}`;
+  setupPreview(g, FS);
+}
+
+window.addEventListener('load', ()=>{
+  initPreview2D(document.getElementById('prev-2d'));
+  initPreview3D(document.getElementById('prev-3d'));
+  initPreviewAudio(document.getElementById('prev-audio'));
+});
+</script>
+</body>
+</html>

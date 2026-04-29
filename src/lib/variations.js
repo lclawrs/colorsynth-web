@@ -1,0 +1,15 @@
+export const VARIATIONS = {
+  "Test":     `vec2 variation(vec2 uv,float t){return vec2(sin(uv.x+t),cos(uv.y+t*.7));}`,
+  "Penrose":  `vec2 variation(vec2 uv,float t){vec2 z=vec2(0.);for(int k=0;k<5;k++){float a=6.28318*float(k)/5.;vec2 d=vec2(cos(a),sin(a));float p=dot(uv,d);float ph=t+float(k)*3.14159*.4;z+=cexp(vec2(0.,p*4.+ph));}return z;}`,
+  "Caustics": `vec2 variation(vec2 uv,float t){vec2 s1=vec2(cos(t)*.8,sin(t)*.8);vec2 s2=vec2(cos(t*1.13+2.)*.6,sin(t*1.13+2.)*.6);vec2 s3=vec2(cos(t*.87+4.)*.5,sin(t*.87+4.)*.5);float r1=length(uv-s1)+.3,r2=length(uv-s2)+.3,r3=length(uv-s3)+.3;float c=sin(4.*r1-t*2.)*sin(4.*r2-t*1.8)*sin(3.5*r3-t*2.2);c=c/(1.+abs(c));float ph=atan(uv.y,uv.x)+t*.25;return vec2(cos(ph)*c,sin(ph)*c);}`,
+  "Aurora":   `vec2 variation(vec2 uv,float t){float x=uv.x,y=uv.y;float b1=sin(x*1.8+sin(y*.9+t*.6)*1.4+t*.4);float b2=sin(x*2.3+sin(y*1.1-t*.5)*1.1+t*.35);float b3=sin(x*1.1+sin(y*.7+t*.45)*.9-t*.3);float s=(b1+b2*.7+b3*.5)/2.2;float ph=y*.6+t*.2;return cexp(vec2(0.,ph))*s;}`,
+  "Hex":      `vec2 variation(vec2 uv,float t){float k1=uv.x*2.5,k2=uv.x*1.25+uv.y*2.165,k3=uv.x*1.25-uv.y*2.165;float w=(sin(k1+t)+sin(k2+t*1.05)+sin(k3+t*.97))/3.;vec2 zs=csin(uv);float ph=atan(zs.y,zs.x)*.3+t*.15;return vec2(w*cos(ph),w*sin(ph));}`,
+  "p6m":      `vec2 variation(vec2 uv,float t){float x=uv.x,y=uv.y,s=1.7320508;float e=.7+.3*sin(t*.5);float mg=(cos(x*3.+t)+cos(x*1.5+y*s*1.5+t*1.03)+cos(x*1.5-y*s*1.5+t*.97))*e/3.;float im=(sin(x*3.+t+1.047)+sin(x*1.5+y*s*1.5+t*1.03+1.047)+sin(x*1.5-y*s*1.5+t*.97+1.047))*e/3.;return vec2(mg,im);}`,
+  "Escher":   `vec2 variation(vec2 uv,float t){float r=length(uv)+.05,th=atan(uv.y,uv.x),lr=log(r);float u1=lr*2.5+th*1.2+t*.4,u2=lr*1.8-th*.9+t*.3;float mx=(sin(u1)+sin(u2))*.5;float ph=lr*.8+th+t*.25;return cexp(vec2(0.,ph))*mx*(1.+.3*sin(t+lr));}`,
+  "Bloom":    `vec2 variation(vec2 uv,float t){float r=length(uv)+.01,th=atan(uv.y,uv.x),bl=0.;for(int k=1;k<6;k++){float fk=float(k),amp=exp(-fk*.4),ph=fk*th+fk*t*.18+fk*.63;bl+=amp*sin(r*fk*2.+ph);}bl/=2.5;return cexp(vec2(0.,th*.5+t*.12))*bl;}`,
+  "Tidal":    `vec2 variation(vec2 uv,float t){vec2 z2=cmul(uv,uv)+vec2(t*.4,0.);vec2 zs=csin(uv+vec2(sin(t*.3)*.5,cos(t*.25)*.5));return cmul(csin(z2),zs)+cmul(uv,ccos(zs+vec2(t*.2,0.)));}`,
+  "Vortex":   `vec2 variation(vec2 uv,float t){float ct=cos(t*.3),st=sin(t*.3);vec2 r=vec2(uv.x*ct-uv.y*st,uv.x*st+uv.y*ct);vec2 zs=csin(r);vec2 z=(r+zs)*.5;float d=length(r-zs)+t*.1;return cmul(cmul(z,z),cexp(vec2(0.,d)));}`,
+  "Spiral":   `vec2 variation(vec2 uv,float t){vec2 zs=csin(uv);return cmul(uv,cexp(vec2(0.,length(zs)+t*.4)));}`,
+  "Julia":    `vec2 variation(vec2 uv,float t){float cx=.7885*cos(t*.3),cy=.7885*sin(t*.3);vec2 z=uv*.5,c=vec2(cx,cy);for(int i=0;i<6;i++){if(length(z)<4.)z=vec2(z.x*z.x-z.y*z.y,2.*z.x*z.y)+c;}return z;}`,
+  "Möbius":   `vec2 variation(vec2 uv,float t){vec2 a=cexp(vec2(0.,t)),b=vec2(cos(t),0.),c=vec2(sin(t),0.),d=cexp(vec2(0.,t));return cdiv(cmul(a,uv)+b,cmul(c,uv)+d);}`,
+}

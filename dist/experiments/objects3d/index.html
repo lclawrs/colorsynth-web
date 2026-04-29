@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ColorSynth 3D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>ColorSynth — 3D Objects</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; background:#000; overflow:hidden; font-family:'Courier New',monospace; }
+@supports (-webkit-touch-callout:none) { html,body,#canvas { height:-webkit-fill-available; } }
+#canvas { display:block; width:100vw; height:100vh; touch-action:none; }
+
+#corner-tl, #corner-tr, #corner-bl {
+  position:fixed; color:rgba(255,255,255,0.4); font-size:10px;
+  letter-spacing:1.5px; pointer-events:none;
+}
+#corner-tl { top:16px; left:16px; }
+#corner-tr { top:16px; right:16px; }
+#corner-bl { bottom:82px; left:16px; }
+#corner-tl a { color:inherit; text-decoration:none; }
+
+#hud {
+  position:fixed; bottom:0; left:0; right:0; height:68px;
+  background:linear-gradient(transparent,rgba(0,0,0,0.88));
+  display:flex; align-items:flex-end; justify-content:center;
+  padding:0 20px 14px; gap:10px;
+  transition:opacity 0.4s;
+}
+#hud.hidden { opacity:0; pointer-events:none; }
+
+.chip {
+  padding:7px 16px; border-radius:20px;
+  border:1px solid rgba(255,255,255,0.2);
+  background:rgba(255,255,255,0.07); color:#fff;
+  font-size:12px; cursor:pointer; letter-spacing:0.5px;
+  transition:all 0.15s; -webkit-user-select:none;
+  font-family:'Courier New',monospace;
+}
+.chip.active { background:rgba(255,255,255,0.9); color:#000; border-color:transparent; }
+.chip:active { transform:scale(0.93); }
+
+#toast {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0.8);
+  background:rgba(255,255,255,0.12); backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  color:#fff; padding:10px 22px; border-radius:24px;
+  font-size:13px; letter-spacing:1px; pointer-events:none;
+  opacity:0; transition:opacity 0.2s, transform 0.2s;
+  border:1px solid rgba(255,255,255,0.2);
+}
+#toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="corner-tl"><a href="../">← HUB</a> · COLORSYNTH 3D</div>
+<div id="corner-tr" id="fps-el"></div>
+<div id="corner-bl">SWIPE · PINCH ZOOM · TAP OBJECT</div>
+<div id="toast"></div>
+
+<div id="hud">
+  <button class="chip active" data-obj="0">LOGO</button>
+  <button class="chip" data-obj="1">SPHERE</button>
+  <button class="chip" data-obj="2">TORUS</button>
+  <button class="chip" data-obj="3">CUBE</button>
+  <button class="chip" data-obj="4">ALL</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl', {antialias:false, powerPreference:'high-performance'});
+if (!gl) { document.body.innerHTML='<p style="color:white;padding:40px">WebGL not supported</p>'; }
+
+const VS = `attribute vec2 a_pos; void main(){gl_Position=vec4(a_pos,0.,1.);}`;
+
+// ── Fragment shader — full raymarcher with ColorSynth surface shading ──────────
+const FS = `
+precision highp float;
+uniform float u_time;
+uniform vec2  u_res;
+uniform float u_zoom;
+uniform float u_rotX;
+uniform float u_rotY;
+uniform int   u_obj;    // 0=logo 1=sphere 2=torus 3=cube 4=all
+
+// ── SDF primitives ──────────────────────────────────────────────────────────
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+
+float sdBox(vec3 p, vec3 b) {
+  vec3 q = abs(p) - b;
+  return length(max(q,0.)) + min(max(q.x,max(q.y,q.z)),0.);
+}
+
+float sdTorus(vec3 p, vec2 t) {
+  vec2 q = vec2(length(p.xz)-t.x, p.y);
+  return length(q)-t.y;
+}
+
+float sdCylinder(vec3 p, float r, float h) {
+  vec2 d = abs(vec2(length(p.xz),p.y))-vec2(r,h);
+  return min(max(d.x,d.y),0.) + length(max(d,0.));
+}
+
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 pa=p-a, ba=b-a;
+  float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.);
+  return length(pa-ba*h)-r;
+}
+
+// Smooth union
+float smin(float a, float b, float k) {
+  float h = clamp(.5+.5*(b-a)/k,0.,1.);
+  return mix(b,a,h)-k*h*(1.-h);
+}
+
+// ── "CS" logo SDF ───────────────────────────────────────────────────────────
+// C: arc (cylinder shell minus cutout)
+float sdC(vec3 p) {
+  // Outer torus slice for the C arc
+  p.x += 0.32;   // shift C left of center
+  float r1=length(p.xz)-0.28; float r2=p.y;
+  float arc = length(vec2(r1,r2)) - 0.09;  // tube around circle
+  // Cut away right side to make C open
+  float cut = sdBox(p - vec3(0.22, 0., 0.), vec3(0.25, 0.5, 0.3));
+  return max(arc, -cut + 0.08);
+}
+
+// S: two offset tori stacked
+float sdS(vec3 p) {
+  p.x -= 0.32;  // shift S right of center
+  vec3 pt = p - vec3(0., 0.22, 0.);
+  float t1 = length(vec2(length(pt.xz)-0.18, pt.y)) - 0.09;
+  vec3 pb = p + vec3(0., 0.22, 0.);
+  float t2 = length(vec2(length(pb.xz)-0.18, pb.y)) - 0.09;
+  // Cut halves to make S shape
+  float cutTop  = max(t1, -pt.x - 0.0);   // keep left half of top
+  float cutBot  = max(t2,  pb.x - 0.0);   // keep right half of bottom
+  float mid     = sdCapsule(p, vec3(0.,0.1,0.), vec3(0.,-0.1,0.), 0.07);
+  return min(min(cutTop, cutBot), mid);
+}
+
+float sdLogo(vec3 p) {
+  return smin(sdC(p), sdS(p), 0.04);
+}
+
+// ── Scene ───────────────────────────────────────────────────────────────────
+float scene(vec3 p) {
+  if (u_obj == 1) return sdSphere(p, 0.9);
+  if (u_obj == 2) return sdTorus(p, vec2(0.55, 0.25));
+  if (u_obj == 3) return sdBox(p, vec3(0.72));
+  if (u_obj == 0) return sdLogo(p);
+  // ALL: arrange objects in a diamond
+  float s = sdSphere(p - vec3(-1.5, 0., 0.), 0.55);
+  float t = sdTorus(p - vec3(1.5, 0., 0.), vec2(0.45,0.18));
+  float b = sdBox(p - vec3(0., -1.4, 0.), vec3(0.5));
+  float l = sdLogo(p - vec3(0., 1.35, 0.));
+  return min(min(s,t),min(b,l));
+}
+
+// ── Normal via finite difference ─────────────────────────────────────────────
+vec3 normal(vec3 p) {
+  float e = 0.001;
+  return normalize(vec3(
+    scene(p+vec3(e,0,0))-scene(p-vec3(e,0,0)),
+    scene(p+vec3(0,e,0))-scene(p-vec3(0,e,0)),
+    scene(p+vec3(0,0,e))-scene(p-vec3(0,0,e))
+  ));
+}
+
+// ── ColorSynth complex math ──────────────────────────────────────────────────
+vec2 cmul(vec2 a,vec2 b){return vec2(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
+vec2 cexp(vec2 z){return exp(z.x)*vec2(cos(z.y),sin(z.y));}
+
+// ── ColorSynth surface color from hit point + normal ─────────────────────────
+vec3 csColor(vec3 p, vec3 n, float t) {
+  // Map surface position to complex plane (use two surface coords)
+  vec2 z = vec2(dot(p, n.zxy)*2.0, dot(p, n.yzx)*2.0);
+  // Penrose-style quasicrystal on the surface
+  vec2 acc = vec2(0.0);
+  for (int k=0; k<5; k++) {
+    float ang = 6.28318*float(k)/5.0;
+    vec2 wdir = vec2(cos(ang),sin(ang));
+    float proj = dot(z, wdir);
+    float ph = t*0.5 + float(k)*1.2566;
+    acc += cexp(vec2(0., proj*3.0+ph));
+  }
+  acc = acc / (1.0 + length(acc)*0.3);
+  float r = 0.5+0.5*sin(acc.x*2.0);
+  float g = 0.5+0.5*sin(acc.y*2.0+2.094);
+  float b = 0.5+0.5*sin(length(acc)*2.0+4.189);
+  return vec3(r,g,b);
+}
+
+// ── Main ────────────────────────────────────────────────────────────────────
+void main() {
+  vec2 uv = (gl_FragCoord.xy / u_res - 0.5) * vec2(u_res.x/u_res.y, 1.0) * 2.0;
+
+  // Camera orbit controlled by uniforms
+  float camDist = 3.5 / u_zoom;
+  vec3 ro = vec3(
+    camDist * cos(u_rotY) * cos(u_rotX),
+    camDist * sin(u_rotX),
+    camDist * sin(u_rotY) * cos(u_rotX)
+  );
+  vec3 fwd   = normalize(-ro);
+  vec3 right = normalize(cross(fwd, vec3(0,1,0)));
+  vec3 up2   = cross(right, fwd);
+  vec3 rd    = normalize(uv.x*right + uv.y*up2 + 1.8*fwd);
+
+  // Lights
+  vec3 light1 = normalize(vec3(1.5, 2.0, 1.0));
+  vec3 light2 = normalize(vec3(-1.0, -0.5, 1.5));
+
+  // Raymarch
+  float d = 0.0;
+  vec3 col = vec3(0.02, 0.02, 0.04);  // background
+  bool hit = false;
+  for (int i=0; i<96; i++) {
+    vec3 p = ro + rd*d;
+    float h = scene(p);
+    if (h < 0.002) {
+      vec3 n = normal(p);
+      // Lighting
+      float diff1 = max(dot(n, light1), 0.0);
+      float diff2 = max(dot(n, light2), 0.0) * 0.4;
+      float amb   = 0.15;
+      // Fresnel rim
+      float rim   = pow(1.0 - max(dot(n,-rd),0.0), 2.5) * 0.4;
+      // ColorSynth surface color
+      vec3 cs = csColor(p, n, u_time);
+      col = cs * (diff1*0.7 + diff2 + amb) + vec3(rim);
+      // Specular
+      vec3 refl = reflect(-light1, n);
+      col += vec3(0.6) * pow(max(dot(refl,-rd),0.),32.) * 0.5;
+      hit = true;
+      break;
+    }
+    d += h;
+    if (d > 8.0) break;
+  }
+
+  // Vignette
+  float vig = 1.0 - dot(uv*0.4, uv*0.4);
+  col *= clamp(vig, 0.0, 1.0);
+
+  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+}
+`;
+
+// ── Compile ──────────────────────────────────────────────────────────────────
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    console.error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+  console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const pos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(pos);
+gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+
+const uTime = gl.getUniformLocation(prog, 'u_time');
+const uRes  = gl.getUniformLocation(prog, 'u_res');
+const uZoom = gl.getUniformLocation(prog, 'u_zoom');
+const uRotX = gl.getUniformLocation(prog, 'u_rotX');
+const uRotY = gl.getUniformLocation(prog, 'u_rotY');
+const uObj  = gl.getUniformLocation(prog, 'u_obj');
+
+// ── State ────────────────────────────────────────────────────────────────────
+let rotX = 0.25, rotY = 0.5;
+let zoom = 1.0;
+let objIdx = 0;
+let autoRotate = true;
+let frameCount = 0, lastFps = performance.now();
+let hudVisible = true, hudTimer = null;
+
+const fpsEl  = document.getElementById('corner-tr');
+const toastEl = document.getElementById('toast');
+let toastTimer;
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toastEl.classList.remove('show'), 1400);
+}
+
+// ── Resize ───────────────────────────────────────────────────────────────────
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio||1, 1.5); // cap at 1.5 for perf
+  canvas.width  = window.innerWidth  * dpr;
+  canvas.height = window.innerHeight * dpr;
+  gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize', resize); resize();
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const NAMES = ['Logo','Sphere','Torus','Cube','All Objects'];
+function render(now) {
+  requestAnimationFrame(render);
+  if (autoRotate) rotY += 0.004;
+
+  gl.uniform1f(uTime, now/1000);
+  gl.uniform2f(uRes, canvas.width, canvas.height);
+  gl.uniform1f(uZoom, zoom);
+  gl.uniform1f(uRotX, rotX);
+  gl.uniform1f(uRotY, rotY);
+  gl.uniform1i(uObj, objIdx);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frameCount++;
+  if (now-lastFps>1000) { fpsEl.textContent=frameCount+' fps'; frameCount=0; lastFps=now; }
+}
+requestAnimationFrame(render);
+
+// ── HUD chips ────────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip[data-obj]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    objIdx = parseInt(btn.dataset.obj);
+    document.querySelectorAll('.chip[data-obj]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    toast(NAMES[objIdx]);
+    showHud();
+  });
+});
+
+function showHud() {
+  document.getElementById('hud').classList.remove('hidden');
+  clearTimeout(hudTimer);
+  hudTimer = setTimeout(()=>document.getElementById('hud').classList.add('hidden'), 4000);
+}
+showHud();
+
+// ── Touch handling ────────────────────────────────────────────────────────────
+let touch0=null, touch1=null, initDist=null, initZoom=1;
+let lastTap=0, dragStart=null;
+
+canvas.addEventListener('touchstart', e=>{
+  if (e.touches.length===1) {
+    touch0={x:e.touches[0].clientX, y:e.touches[0].clientY};
+    dragStart={x:touch0.x, y:touch0.y, rotX, rotY};
+    touch1=null;
+    // double-tap → cycle object
+    const now=Date.now();
+    if (now-lastTap<300){ objIdx=(objIdx+1)%5; document.querySelectorAll('.chip[data-obj]').forEach((b,i)=>b.classList.toggle('active',i===objIdx)); toast(NAMES[objIdx]); }
+    lastTap=now;
+  } else if (e.touches.length===2) {
+    touch0={x:e.touches[0].clientX,y:e.touches[0].clientY};
+    touch1={x:e.touches[1].clientX,y:e.touches[1].clientY};
+    initDist=Math.hypot(touch1.x-touch0.x,touch1.y-touch0.y);
+    initZoom=zoom;
+    dragStart=null;
+  }
+  autoRotate=false;
+},{passive:true});
+
+canvas.addEventListener('touchmove', e=>{
+  if (e.touches.length===1 && dragStart) {
+    const dx=e.touches[0].clientX-dragStart.x;
+    const dy=e.touches[0].clientY-dragStart.y;
+    rotY = dragStart.rotY + dx*0.008;
+    rotX = Math.max(-1.4, Math.min(1.4, dragStart.rotX - dy*0.008));
+  } else if (e.touches.length===2 && initDist) {
+    const d=Math.hypot(e.touches[1].clientX-e.touches[0].clientX, e.touches[1].clientY-e.touches[0].clientY);
+    zoom=Math.max(0.3,Math.min(5.0,initZoom*d/initDist));
+  }
+},{passive:true});
+
+canvas.addEventListener('touchend', e=>{
+  if (e.touches.length===0) {
+    initDist=null;
+    // resume auto-rotate after 3s idle
+    clearTimeout(window._resumeTimer);
+    window._resumeTimer=setTimeout(()=>autoRotate=true, 3000);
+    showHud();
+  }
+},{passive:true});
+
+// Mouse drag (desktop)
+let mouseDown=false, lastMouse=null;
+canvas.addEventListener('mousedown', e=>{ mouseDown=true; lastMouse={x:e.clientX,y:e.clientY}; autoRotate=false; });
+canvas.addEventListener('mousemove', e=>{ if(!mouseDown||!lastMouse) return; rotY+=(e.clientX-lastMouse.x)*0.007; rotX=Math.max(-1.4,Math.min(1.4,rotX-(e.clientY-lastMouse.y)*0.007)); lastMouse={x:e.clientX,y:e.clientY}; });
+canvas.addEventListener('mouseup',   ()=>{ mouseDown=false; clearTimeout(window._resumeTimer); window._resumeTimer=setTimeout(()=>autoRotate=true,3000); });
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); zoom=Math.max(0.3,Math.min(5.0,zoom*(e.deltaY<0?1.12:0.89))); },{passive:false});
+
+// Keyboard
+window.addEventListener('keydown', e=>{
+  if (e.key==='ArrowRight'||e.key==='n') { objIdx=(objIdx+1)%5; document.querySelectorAll('.chip[data-obj]').forEach((b,i)=>b.classList.toggle('active',i===objIdx)); toast(NAMES[objIdx]); }
+  if (e.key==='ArrowLeft')  { objIdx=(objIdx+4)%5; document.querySelectorAll('.chip[data-obj]').forEach((b,i)=>b.classList.toggle('active',i===objIdx)); toast(NAMES[objIdx]); }
+  if (e.key===' ') autoRotate=!autoRotate;
+  if (e.key==='+'||e.key==='=') zoom=Math.min(5,zoom*1.15);
+  if (e.key==='-') zoom=Math.max(0.3,zoom/1.15);
+});
+</script>
+</body>
+</html>
