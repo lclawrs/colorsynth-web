@@ -12,4 +12,5 @@ export const VARIATIONS = {
   "Spiral":   `vec2 variation(vec2 uv,float t){vec2 zs=csin(uv);return cmul(uv,cexp(vec2(0.,length(zs)+t*.4)));}`,
   "Julia":    `vec2 variation(vec2 uv,float t){float cx=.7885*cos(t*.3),cy=.7885*sin(t*.3);vec2 z=uv*.5,c=vec2(cx,cy);for(int i=0;i<6;i++){if(length(z)<4.)z=vec2(z.x*z.x-z.y*z.y,2.*z.x*z.y)+c;}return z;}`,
   "Möbius":   `vec2 variation(vec2 uv,float t){vec2 a=cexp(vec2(0.,t)),b=vec2(cos(t),0.),c=vec2(sin(t),0.),d=cexp(vec2(0.,t));return cdiv(cmul(a,uv)+b,cmul(c,uv)+d);}`,
+  "Newton":   `vec2 variation(vec2 uv,float t){vec2 z=uv*(1.+.12*sin(t*.25));for(int i=0;i<5;i++){vec2 z2=cmul(z,z);vec2 z3=cmul(z2,z);vec2 fn=z3-vec2(1.,0.)+cmul(vec2(sin(t*.3)*.2,cos(t*.2)*.2),z);vec2 df=3.*z2+vec2(sin(t*.3)*.2,cos(t*.2)*.2);z=z-cdiv(fn,df);}return z;}`
 }
